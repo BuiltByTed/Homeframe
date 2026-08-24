@@ -119,12 +119,13 @@ The built-in router uses real anchors and History API entries in browsers and de
 
 ```tsx
 const route = useRouterSnapshot();
-const { scrollKey, direction, scrollBehavior } = useRouteScrollRestoration();
+const { scrollKey, direction, scrollBehavior, permalinkScroll } = useRouteScrollRestoration();
 
 <AppScrollView
   scrollKey={scrollKey}
   navigationType={direction}
   scrollBehavior={scrollBehavior}
+  permalinkScroll={permalinkScroll}
 >
   <RouterOutlet />
 </AppScrollView>
@@ -133,6 +134,10 @@ const { scrollKey, direction, scrollBehavior } = useRouteScrollRestoration();
 Use `Link` for semantic navigation and `navigate()` for app buttons. Do not call `location.href` for same-origin in-scope routes. Ordinary push/replace navigation starts the destination at `scrollTop = 0`; popstate Back/Forward restores the saved entry.
 
 `useRouterSnapshot()` exposes the current `url`, route `state`, matched params/data, history key, and direction. This supports query-driven screens and lightweight navigation-state hints without reaching into `window.history.state`.
+
+Treat `history.state` as entry-local and nonportable. For links that must survive a cold launch, process eviction, installation mode, or sharing to another device, use `usePermalink().create()`: encode identity in the route path, durable view choices in query parameters, and scrolling as a stable fragment anchor. Exact internal scroll positions are available through `scroll: 'current'`, but semantic anchors are less sensitive to content changes. Pass `permalinkScroll` into `AppScrollView`; restoration retries while lazy content arrives and cancels on user interaction.
+
+Use `useNavigationGesture()` when product UI needs Back/Forward swipe progress. It exposes direction, normalized progress, delta, threshold, and the `idle`/`tracking`/`committing`/`cancelling` lifecycle. Do not attach competing document-level touch handlers.
 
 For a URL-only modal or sheet update, pass `{ replace: true, preventScrollReset: true }` to `navigate`. The router marks that transition as `scrollBehavior: 'preserve'`; ordinary pushes and replaces continue to reset to the top.
 

@@ -104,6 +104,19 @@ describe('React shell primitives', () => {
     expect(view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop).toBe(275);
   });
 
+  it('applies an explicit cold-launch permalink scroll position', () => {
+    const view = render(
+      <AppScrollView
+        scrollKey="permalink-entry"
+        navigationType="reload"
+        permalinkScroll={{ type: 'position', top: 640 }}
+      >
+        <div style={{ height: 2000 }}>Permalink destination</div>
+      </AppScrollView>,
+    );
+    expect(view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop).toBe(640);
+  });
+
   it('prioritizes only an actually eligible install nudge and releases notifications after permanent dismissal', async () => {
     render(
       <HomeframeNudgeProvider config={{

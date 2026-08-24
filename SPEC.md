@@ -665,6 +665,9 @@ In browser mode, the built-in router and every adapter MUST:
 - set `history.scrollRestoration = 'manual'` and restore each declared scroll root
   after the route has committed;
 - preserve query strings, fragments, and same-origin deep links;
+- expose a permalink builder that encodes route identity in the path, portable
+  view state in ordinary query parameters, and an optional scroll target as a
+  stable fragment anchor or bounded exact internal-scroll position;
 - use real `<a href>` elements and intercept only eligible unmodified, in-scope,
   same-origin activations;
 - allow downloads, external origins, `_blank`, custom schemes, and out-of-scope
@@ -672,6 +675,20 @@ In browser mode, the built-in router and every adapter MUST:
 - respond correctly to `pageshow` with `event.persisted` and not remount a second
   app after a back-forward-cache restoration;
 - leave the shell mounted while route content loads, errors, or suspends.
+
+`history.state` MUST be treated as entry-local state and MUST NOT be presented as
+shareable or process-death-safe. A permalink MUST be fully recoverable from its
+URL alone. Permalink query values MUST support repeated keys, and framework-owned
+scroll keys MUST be namespaced and excluded from application view state. Invalid,
+non-finite, negative, or unreasonably large scroll values MUST be rejected or
+bounded before layout use.
+
+`AppScrollView` MUST apply an explicit permalink scroll target after route
+content commits. It MUST retry a missing anchor or temporarily clamped position
+for bounded asynchronous loading, cancel immediately on pointer, touch, wheel,
+or keyboard interaction, keep document scroll at zero, and clamp naturally when
+the destination lacks enough overflow to satisfy an exact offset. Stable anchors
+SHOULD be preferred over pixel positions.
 
 In managed history mode, the router MUST keep the same URL, entry-key,
 navigation-direction, deep-link, scroll-restoration, and no-document-request
@@ -696,6 +713,16 @@ header mounted, expose no transparent canvas, and commit only after a threshold.
 Safari browser mode retains its native browser gesture. Developers MAY opt into
 native installed history with `historyMode: 'browser'`, accepting the WebKit
 fallback limitation, or force `historyMode: 'managed'` for conformance testing.
+
+The managed router MUST expose a separately subscribable navigation-gesture
+snapshot with `idle`, `tracking`, `committing`, and `cancelling` phases, Back or
+Forward direction, CSS-pixel delta, commit distance, normalized progress, and a
+`canCommit` flag. React applications receive it through
+`useNavigationGesture()`. Phase boundaries MUST also enter the local runtime
+event stream; per-frame progress SHOULD remain on the dedicated store so an
+opted-in telemetry adapter is not called at display refresh rate. Native browser
+gestures that WebKit does not expose remain `idle` rather than reporting guessed
+state.
 
 On `popstate`, cached route code and state SHOULD render synchronously. If route
 data must be revalidated, the previous stable shell and an intentional route-level
@@ -1226,7 +1253,9 @@ Link
 NavLink
 RouterOutlet
 useNavigationDirection
+useNavigationGesture
 useRouteScrollRestoration
+usePermalink
 
 // Capabilities and nudges
 HomeframeNudgeProvider

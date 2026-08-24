@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHomeframeRouter } from '@homeframe/router';
+import { createHomeframeRouter, parsePermalink } from '@homeframe/router';
 
 function dispatchTouch(target: Element, type: string, clientX?: number, clientY?: number): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -11,6 +11,61 @@ function dispatchTouch(target: Element, type: string, clientX?: number, clientY?
 }
 
 describe('HomeframeRouter', () => {
+  it('cold-starts a path, query-backed view, and anchor from a permalink', async () => {
+    history.replaceState(null, '', '/app/permalinks/release-board?mode=compact&tag=ios&tag=pwa#item-18');
+    const router = createHomeframeRouter([
+      { id: 'permalink', path: '/app/permalinks/:view', element: null },
+    ], { scope: '/app/' });
+    router.start();
+    await Promise.resolve();
+
+    expect(router.getSnapshot()).toMatchObject({
+      direction: 'reload',
+      match: { params: { view: 'release-board' } },
+      permalink: {
+        view: { mode: 'compact', tag: ['ios', 'pwa'] },
+        scroll: { type: 'anchor', anchor: 'item-18', offset: 0 },
+      },
+    });
+    router.stop();
+  });
+
+  it('builds share-ready view and scroll URLs without serializing history state', () => {
+    history.replaceState(null, '', '/app/permalinks/release-board?mode=comfortable');
+    document.body.innerHTML = '<div data-hf-viewport><div data-hf-scroll-view></div></div>';
+    document.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop = 486;
+    const router = createHomeframeRouter([
+      { id: 'permalink', path: '/app/permalinks/:view', element: null },
+    ], { scope: '/app/' });
+    router.start();
+
+    const href = router.createPermalink({
+      view: { mode: 'compact', filter: 'keyboard', obsolete: null },
+      scroll: 'current',
+      absolute: false,
+    });
+    const url = new URL(href, location.href);
+    expect(url.pathname).toBe('/app/permalinks/release-board');
+    expect(url.searchParams.get('mode')).toBe('compact');
+    expect(url.searchParams.get('filter')).toBe('keyboard');
+    expect(url.searchParams.get('__hf_scroll')).toBe('486');
+    expect(url.href).not.toContain('history.state');
+    expect(parsePermalink(url).scroll).toEqual({ type: 'position', top: 486 });
+
+    const anchor = router.createPermalink({
+      scroll: { anchor: 'finding 18', offset: 12 },
+      absolute: false,
+    });
+    expect(parsePermalink(anchor).scroll).toEqual({
+      type: 'anchor',
+      anchor: 'finding 18',
+      offset: 12,
+    });
+    expect(() => router.createPermalink({ view: { __hf_scroll: 4 } })).toThrow(/reserves/);
+    expect(() => router.createPermalink({ to: 'https://example.com/app/' })).toThrow(/same-origin/);
+    router.stop();
+  });
+
   it('uses genuine history entries and derives back direction', async () => {
     history.replaceState(null, '', '/');
     const router = createHomeframeRouter([
@@ -125,12 +180,23 @@ describe('HomeframeRouter', () => {
     const animationFrame = vi.spyOn(window, 'requestAnimationFrame');
 
     dispatchTouch(guard, 'touchstart', 4, 100);
+    expect(router.getNavigationGestureSnapshot()).toMatchObject({
+      phase: 'tracking',
+      direction: 'back',
+      progress: 0,
+    });
     dispatchTouch(guard, 'touchmove', 44, 101);
     dispatchTouch(guard, 'touchmove', 104, 102);
 
     expect(clone).toHaveBeenCalledTimes(1);
     expect(animationFrame).toHaveBeenCalledTimes(1);
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(router.getNavigationGestureSnapshot()).toMatchObject({
+      phase: 'tracking',
+      direction: 'back',
+      progress: 1,
+      canCommit: true,
+    });
     expect(live.style.transform).toBe('translate3d(100px, 0, 0)');
     expect(document.documentElement.style.getPropertyValue('--hf-edge-live-offset')).toBe('');
     expect(document.documentElement.style.getPropertyValue('--hf-edge-preview-offset')).toBe('');
@@ -138,6 +204,42 @@ describe('HomeframeRouter', () => {
 
     clone.mockRestore();
     animationFrame.mockRestore();
+    router.stop();
+    expect(router.getNavigationGestureSnapshot()).toMatchObject({
+      phase: 'idle',
+      direction: null,
+      progress: 0,
+    });
+  });
+
+  it('publishes the complete edge-swipe lifecycle through its reactive store', async () => {
+    history.replaceState(null, '', '/');
+    document.body.innerHTML = `
+      <div data-hf-viewport>
+        <div data-hf-scroll-view><p>Swipe lifecycle</p></div>
+      </div>
+    `;
+    const router = createHomeframeRouter([
+      { id: 'home', path: '/', element: null },
+      { id: 'item', path: '/items/1', element: null },
+    ], { historyMode: 'managed' });
+    router.start();
+    await router.navigate('/items/1');
+    const phases: string[] = [];
+    const unsubscribe = router.subscribeNavigationGesture(() => {
+      phases.push(router.getNavigationGestureSnapshot().phase);
+    });
+
+    const guard = document.querySelector<HTMLElement>('[data-hf-edge-guard="back"]')!;
+    dispatchTouch(guard, 'touchstart', 4, 100);
+    dispatchTouch(guard, 'touchmove', 104, 101);
+    dispatchTouch(guard, 'touchend');
+    await new Promise(resolve => setTimeout(resolve, 240));
+
+    expect(phases).toEqual(expect.arrayContaining(['tracking', 'committing', 'idle']));
+    expect(router.getSnapshot().url.pathname).toBe('/');
+    expect(router.getNavigationGestureSnapshot().phase).toBe('idle');
+    unsubscribe();
     router.stop();
   });
 

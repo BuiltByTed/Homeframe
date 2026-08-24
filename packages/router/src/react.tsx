@@ -9,7 +9,13 @@ import {
   type MouseEvent,
   type ReactNode,
 } from 'react';
-import type { HomeframeRouter, NavigateOptions, RouterSnapshot } from './router.js';
+import type {
+  CreatePermalinkOptions,
+  HomeframeRouter,
+  NavigateOptions,
+  PermalinkSnapshot,
+  RouterSnapshot,
+} from './router.js';
 
 const RouterContext = createContext<HomeframeRouter | null>(null);
 
@@ -46,13 +52,41 @@ export function useNavigationDirection() {
   return useRouterSnapshot().direction;
 }
 
+/** Reactive lifecycle and progress for Homeframe's installed-iOS edge gesture. */
+export function useNavigationGesture() {
+  const router = useHomeframeRouter();
+  return useSyncExternalStore(
+    router.subscribeNavigationGesture,
+    router.getNavigationGestureSnapshot,
+    router.getServerNavigationGestureSnapshot,
+  );
+}
+
 export function useRouteScrollRestoration() {
   const snapshot = useRouterSnapshot();
   return {
     scrollKey: snapshot.key,
     direction: snapshot.direction,
     scrollBehavior: snapshot.scroll,
+    permalinkScroll: snapshot.permalink.scroll,
   };
+}
+
+export interface PermalinkController extends PermalinkSnapshot {
+  readonly url: URL;
+  create(options?: CreatePermalinkOptions): string;
+}
+
+/** Reads portable URL state and creates links that survive a cold app launch. */
+export function usePermalink(): PermalinkController {
+  const router = useHomeframeRouter();
+  const snapshot = useRouterSnapshot();
+  return useMemo(() => ({
+    url: snapshot.url,
+    view: snapshot.permalink.view,
+    scroll: snapshot.permalink.scroll,
+    create: (options: CreatePermalinkOptions = {}) => router.createPermalink(options),
+  }), [router, snapshot.permalink, snapshot.url]);
 }
 
 export function useNavigate() {
@@ -76,7 +110,7 @@ export function RouterOutlet({ notFound }: { notFound?: ReactNode }) {
 }
 
 export interface LinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, 'href'> {
-  to: string;
+  to: string | URL;
   replace?: boolean;
   state?: unknown;
   prefetch?: 'intent' | 'none';

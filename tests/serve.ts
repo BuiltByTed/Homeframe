@@ -2,10 +2,11 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve } from 'node:path';
+import type { OutgoingHttpHeaders } from 'node:http';
 
 const root = resolve('examples/kitchen-sink/dist');
 const port = Number(process.env.PORT ?? 4173);
-const types = {
+const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -33,7 +34,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   const rawPathname = request.url?.startsWith('/')
-    ? request.url.split(/[?#]/, 1)[0]
+    ? request.url.split(/[?#]/, 1)[0] ?? url.pathname
     : url.pathname;
   let decodedPath;
   try {
@@ -71,7 +72,7 @@ const server = createServer(async (request, response) => {
     const isWorker = url.pathname === '/sw.js';
     const isHtml = extension === '.html';
     const immutable = /\/assets\/.*-[A-Za-z0-9_-]+\.(js|css)$/.test(url.pathname);
-    const headers = {
+    const headers: OutgoingHttpHeaders = {
       'Content-Type': types[extension] ?? 'application/octet-stream',
       'Cache-Control': isWorker || isHtml
         ? 'no-cache, max-age=0, must-revalidate'

@@ -5,7 +5,22 @@ import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import webpush from 'web-push';
+import webpush, { type VapidKeys, type WebPushSubscription } from 'web-push';
+import type {
+  IncomingMessage,
+  OutgoingHttpHeaders,
+  RequestListener,
+  ServerResponse,
+} from 'node:http';
+
+interface RateBucket {
+  count: number;
+  resetAt: number;
+}
+
+interface StatusError extends Error {
+  statusCode: number;
+}
 
 const exampleRoot = resolve(import.meta.dirname);
 const workspaceRoot = resolve(exampleRoot, '../..');
@@ -43,15 +58,15 @@ if (!skipBuild) {
 }
 
 const dist = resolve(exampleRoot, 'dist');
-const subscriptions = new Map();
-const rateBuckets = new Map();
+const subscriptions = new Map<string, WebPushSubscription>();
+const rateBuckets = new Map<string, RateBucket>();
 let pushSendInFlight = false;
-const storedSubscriptions = await readJson(subscriptionsPath, []);
+const storedSubscriptions = await readJson<unknown>(subscriptionsPath, []);
 for (const subscription of (Array.isArray(storedSubscriptions) ? storedSubscriptions.slice(0, 200) : [])) {
   if (validSubscription(subscription)) subscriptions.set(subscription.endpoint, subscription);
 }
 
-const mimeTypes = {
+const mimeTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -62,7 +77,7 @@ const mimeTypes = {
   '.map': 'application/json; charset=utf-8',
 };
 
-const handleRequest = async (request, response) => {
+const handleRequest: RequestListener = async (request, response) => {
   try {
     const protocol = tlsCertificatePath ? 'https' : 'http';
     const url = new URL(request.url ?? '/', `${protocol}://${request.headers.host}`);
@@ -71,11 +86,11 @@ const handleRequest = async (request, response) => {
       return;
     }
     const rawPathname = request.url?.startsWith('/')
-      ? request.url.split(/[?#]/, 1)[0]
+      ? request.url.split(/[?#]/, 1)[0] ?? url.pathname
       : url.pathname;
     await serveStatic(response, url.pathname, rawPathname);
   } catch (error) {
-    json(response, Number(error?.statusCode) || 500, {
+    json(response, statusCode(error), {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -84,7 +99,7 @@ const handleRequest = async (request, response) => {
 const server = tlsCertificatePath
   ? createHttpsServer({
     cert: await readFile(resolve(tlsCertificatePath)),
-    key: await readFile(resolve(tlsKeyPath)),
+    key: await readFile(resolve(tlsKeyPath!)),
   }, handleRequest)
   : createHttpServer(handleRequest);
 
@@ -94,7 +109,11 @@ server.listen(port, '0.0.0.0', () => {
   console.log(`Push subscriptions: ${subscriptions.size}`);
 });
 
-async function handleApi(request, response, url) {
+async function handleApi(
+  request: IncomingMessage,
+  response: ServerResponse,
+  url: URL,
+): Promise<void> {
   if (request.method === 'GET' && url.pathname === '/api/push/status') {
     json(response, 200, { publicKey: vapid.publicKey, subscriptions: subscriptions.size });
     return;
@@ -123,7 +142,7 @@ async function handleApi(request, response, url) {
     requireJson(request);
     enforceRateLimit(request, 'subscriptions', 60, 60_000);
     const body = await bodyJson(request, 4_096);
-    if (typeof body?.endpoint === 'string') subscriptions.delete(body.endpoint);
+    if (isRecord(body) && typeof body.endpoint === 'string') subscriptions.delete(body.endpoint);
     await persistSubscriptions();
     response.writeHead(204, { 'Cache-Control': 'no-store' });
     response.end();
@@ -137,13 +156,16 @@ async function handleApi(request, response, url) {
       json(response, 409, { error: 'A demo push send is already in progress.' });
       return;
     }
-    const input = await bodyJson(request, 8_192);
+    const inputValue = await bodyJson(request, 8_192);
+    const input = isRecord(inputValue) ? inputValue : {};
     const payload = JSON.stringify({
       version: 1,
       title: String(input?.title ?? 'Homeframe').slice(0, 120),
       body: String(input?.body ?? 'End-to-end push test').slice(0, 500),
       route: safeRoute(input?.route),
-      badgeCount: Number.isFinite(input?.badgeCount) ? Math.max(0, input.badgeCount) : undefined,
+      badgeCount: typeof input.badgeCount === 'number' && Number.isFinite(input.badgeCount)
+        ? Math.max(0, input.badgeCount)
+        : undefined,
       tag: 'homeframe-e2e',
     });
     let sent = 0;
@@ -160,8 +182,9 @@ async function handleApi(request, response, url) {
           sent += 1;
         } catch (error) {
           failed += 1;
-          if (error?.statusCode === 404 || error?.statusCode === 410) subscriptions.delete(endpoint);
-          else console.error('Push delivery failed:', error?.message ?? error);
+          const deliveryStatus = statusCode(error, 0);
+          if (deliveryStatus === 404 || deliveryStatus === 410) subscriptions.delete(endpoint);
+          else console.error('Push delivery failed:', error instanceof Error ? error.message : error);
         }
       }
     } finally {
@@ -174,8 +197,12 @@ async function handleApi(request, response, url) {
   json(response, 404, { error: 'API route not found.' });
 }
 
-async function serveStatic(response, pathname, rawPathname = pathname) {
-  let decodedPath;
+async function serveStatic(
+  response: ServerResponse,
+  pathname: string,
+  rawPathname = pathname,
+): Promise<void> {
+  let decodedPath: string;
   try {
     decodedPath = decodeURIComponent(rawPathname);
   } catch {
@@ -210,7 +237,7 @@ async function serveStatic(response, pathname, rawPathname = pathname) {
   const isWorker = pathname === '/sw.js';
   const isHtml = extension === '.html';
   const immutable = /\/assets\/.*-[A-Za-z0-9_-]+\.(js|css)$/.test(pathname);
-  const headers = {
+  const headers: OutgoingHttpHeaders = {
     'Content-Type': mimeTypes[extension] ?? 'application/octet-stream',
     'Cache-Control': isWorker || isHtml
       ? 'no-cache, max-age=0, must-revalidate'
@@ -248,12 +275,10 @@ async function serveStatic(response, pathname, rawPathname = pathname) {
   response.end(body);
 }
 
-function requireSameSite(request) {
+function requireSameSite(request: IncomingMessage): void {
   const requestHost = String(request.headers.host ?? '').toLowerCase();
   if (allowedHosts.size > 0 && !allowedHosts.has(requestHost)) {
-    const error = new Error('Unrecognized Host header.');
-    error.statusCode = 403;
-    throw error;
+    throw httpError('Unrecognized Host header.', 403);
   }
   const expectedOrigin = `${tlsCertificatePath ? 'https' : 'http'}://${requestHost}`;
   const origin = request.headers.origin;
@@ -261,22 +286,18 @@ function requireSameSite(request) {
   if ((origin && origin !== expectedOrigin)
     || (!origin && fetchSite !== 'same-origin' && fetchSite !== 'same-site')
     || (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'same-site')) {
-    const error = new Error('Cross-site demo API request rejected.');
-    error.statusCode = 403;
-    throw error;
+    throw httpError('Cross-site demo API request rejected.', 403);
   }
 }
 
-function requireJson(request) {
+function requireJson(request: IncomingMessage): void {
   if (!String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
-    const error = new Error('Demo API requests must use application/json.');
-    error.statusCode = 415;
-    throw error;
+    throw httpError('Demo API requests must use application/json.', 415);
   }
 }
 
-function validSubscription(value) {
-  if (!value || typeof value !== 'object') return false;
+function validSubscription(value: unknown): value is WebPushSubscription {
+  if (!isRecord(value)) return false;
   if (typeof value.endpoint !== 'string' || value.endpoint.length > 2_048) return false;
   try {
     const endpoint = new URL(value.endpoint);
@@ -284,13 +305,19 @@ function validSubscription(value) {
   } catch {
     return false;
   }
-  return typeof value.keys?.p256dh === 'string'
+  return isRecord(value.keys)
+    && typeof value.keys.p256dh === 'string'
     && value.keys.p256dh.length <= 512
-    && typeof value.keys?.auth === 'string'
+    && typeof value.keys.auth === 'string'
     && value.keys.auth.length <= 512;
 }
 
-function enforceRateLimit(request, action, maximum, windowMs) {
+function enforceRateLimit(
+  request: IncomingMessage,
+  action: string,
+  maximum: number,
+  windowMs: number,
+): void {
   const address = request.socket.remoteAddress ?? 'unknown';
   const key = `${address}:${action}`;
   const now = Date.now();
@@ -301,9 +328,7 @@ function enforceRateLimit(request, action, maximum, windowMs) {
   bucket.count += 1;
   rateBuckets.set(key, bucket);
   if (bucket.count > maximum) {
-    const error = new Error('Too many demo API requests.');
-    error.statusCode = 429;
-    throw error;
+    throw httpError('Too many demo API requests.', 429);
   }
   if (rateBuckets.size > 1_000) {
     for (const [bucketKey, value] of rateBuckets) {
@@ -312,18 +337,19 @@ function enforceRateLimit(request, action, maximum, windowMs) {
   }
 }
 
-function bodyJson(request, limit) {
+function bodyJson(request: IncomingMessage, limit: number): Promise<unknown> {
   return new Promise((resolveBody, reject) => {
-    const chunks = [];
+    const chunks: Buffer[] = [];
     let length = 0;
-    request.on('data', (chunk) => {
-      length += chunk.length;
+    request.on('data', (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      length += buffer.length;
       if (length > limit) {
         reject(new Error('Request body is too large.'));
         request.destroy();
         return;
       }
-      chunks.push(chunk);
+      chunks.push(buffer);
     });
     request.on('end', () => {
       try {
@@ -336,7 +362,7 @@ function bodyJson(request, limit) {
   });
 }
 
-function safeRoute(value) {
+function safeRoute(value: unknown): string {
   if (typeof value !== 'string') return '/pwa';
   try {
     const url = new URL(value, 'https://homeframe.invalid');
@@ -346,7 +372,7 @@ function safeRoute(value) {
   }
 }
 
-function json(response, status, value) {
+function json(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -355,21 +381,43 @@ function json(response, status, value) {
   response.end(JSON.stringify(value));
 }
 
-async function getVapidKeys() {
-  if (existsSync(vapidPath)) return readJson(vapidPath, null);
+async function getVapidKeys(): Promise<VapidKeys> {
+  if (existsSync(vapidPath)) {
+    const stored = await readJson<unknown>(vapidPath, null);
+    if (isRecord(stored)
+      && typeof stored.publicKey === 'string'
+      && typeof stored.privateKey === 'string') {
+      return { publicKey: stored.publicKey, privateKey: stored.privateKey };
+    }
+  }
   const keys = webpush.generateVAPIDKeys();
   await writeFile(vapidPath, `${JSON.stringify(keys, null, 2)}\n`, { mode: 0o600 });
   return keys;
 }
 
-async function readJson(path, fallback) {
+async function readJson<T>(path: string, fallback: T): Promise<T> {
   try {
-    return JSON.parse(await readFile(path, 'utf8'));
+    return JSON.parse(await readFile(path, 'utf8')) as T;
   } catch {
     return fallback;
   }
 }
 
-function persistSubscriptions() {
+function persistSubscriptions(): Promise<void> {
   return writeFile(subscriptionsPath, `${JSON.stringify([...subscriptions.values()], null, 2)}\n`, { mode: 0o600 });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function httpError(message: string, status: number): StatusError {
+  return Object.assign(new Error(message), { statusCode: status });
+}
+
+function statusCode(error: unknown, fallback = 500): number {
+  if (!isRecord(error)) return fallback;
+  return typeof error.statusCode === 'number' && Number.isFinite(error.statusCode)
+    ? error.statusCode
+    : fallback;
 }

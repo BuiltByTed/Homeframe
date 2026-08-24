@@ -4,6 +4,50 @@ import { emitRuntimeEvent, getBuildInfo, getHomeframeRootStyle } from '@homefram
 export type NavigationDirection = 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
 export type RouteScrollAction = 'reset' | 'restore' | 'preserve';
 
+export type PermalinkViewInput = string | number | boolean;
+export type PermalinkViewValue = string | readonly string[];
+
+export type PermalinkScrollTarget =
+  | { readonly type: 'position'; readonly top: number }
+  | { readonly type: 'anchor'; readonly anchor: string; readonly offset: number };
+
+export type PermalinkScrollInput =
+  | 'current'
+  | number
+  | { top: number }
+  | { anchor: string; offset?: number }
+  | null;
+
+export interface CreatePermalinkOptions {
+  /** Defaults to the current route, query, and fragment. */
+  to?: string | URL;
+  /** URL query-state patch. `null` deletes a key; arrays create repeated keys. */
+  view?: Record<
+    string,
+    PermalinkViewInput | readonly PermalinkViewInput[] | null | undefined
+  >;
+  /** Omit to preserve the destination's scroll target; `null` clears it. */
+  scroll?: PermalinkScrollInput;
+  /** Absolute URLs are share-ready. Set false for an in-app href. */
+  absolute?: boolean;
+}
+
+export interface PermalinkSnapshot {
+  readonly view: Readonly<Record<string, PermalinkViewValue>>;
+  readonly scroll: PermalinkScrollTarget | null;
+}
+
+export interface NavigationGestureSnapshot {
+  readonly phase: 'idle' | 'tracking' | 'committing' | 'cancelling';
+  readonly direction: 'back' | 'forward' | null;
+  /** Normalized against the commit distance and clamped to 0…1. */
+  readonly progress: number;
+  readonly delta: number;
+  readonly commitDistance: number;
+  readonly canCommit: boolean;
+  readonly revision: number;
+}
+
 export interface RouteLoaderArgs {
   url: URL;
   params: Record<string, string>;
@@ -29,6 +73,7 @@ export interface RouteMatch<T = unknown> {
 
 export interface RouterSnapshot {
   url: URL;
+  permalink: PermalinkSnapshot;
   state: unknown;
   key: string;
   index: number;
@@ -98,6 +143,72 @@ interface EdgeGesture {
   originalIndicatorTransform: string;
 }
 
+const PERMALINK_SCROLL_PARAMETER = '__hf_scroll';
+const PERMALINK_OFFSET_PARAMETER = '__hf_offset';
+const RESERVED_PERMALINK_PARAMETERS = new Set([
+  PERMALINK_SCROLL_PARAMETER,
+  PERMALINK_OFFSET_PARAMETER,
+]);
+const MAX_PERMALINK_SCROLL = 10_000_000;
+const MAX_PERMALINK_OFFSET = 10_000;
+const MAX_PERMALINK_ANCHOR_LENGTH = 512;
+
+function boundedNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function parseFiniteParameter(value: string | null): number | null {
+  if (value === null || value.trim() === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function decodeFragment(hash: string): string {
+  if (!hash || hash === '#') return '';
+  try {
+    return decodeURIComponent(hash.slice(1));
+  } catch {
+    return hash.slice(1);
+  }
+}
+
+/** Parses only durable URL state; `history.state` is deliberately not portable. */
+export function parsePermalink(url: string | URL): PermalinkSnapshot {
+  const parsed = url instanceof URL
+    ? url
+    : new URL(url, typeof location === 'undefined' ? 'http://homeframe.invalid/' : location.href);
+  const view = Object.create(null) as Record<string, PermalinkViewValue>;
+  for (const key of new Set(parsed.searchParams.keys())) {
+    if (RESERVED_PERMALINK_PARAMETERS.has(key)) continue;
+    const values = parsed.searchParams.getAll(key);
+    view[key] = values.length > 1 ? Object.freeze(values) : values[0] ?? '';
+  }
+
+  const anchor = decodeFragment(parsed.hash).slice(0, MAX_PERMALINK_ANCHOR_LENGTH);
+  const offset = parseFiniteParameter(parsed.searchParams.get(PERMALINK_OFFSET_PARAMETER));
+  if (anchor) {
+    return {
+      view: Object.freeze(view),
+      scroll: Object.freeze({
+        type: 'anchor' as const,
+        anchor,
+        offset: boundedNumber(offset ?? 0, -MAX_PERMALINK_OFFSET, MAX_PERMALINK_OFFSET),
+      }),
+    };
+  }
+
+  const top = parseFiniteParameter(parsed.searchParams.get(PERMALINK_SCROLL_PARAMETER));
+  return {
+    view: Object.freeze(view),
+    scroll: top === null
+      ? null
+      : Object.freeze({
+          type: 'position' as const,
+          top: boundedNumber(top, 0, MAX_PERMALINK_SCROLL),
+        }),
+  };
+}
+
 function newKey(): string {
   return crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -158,6 +269,7 @@ function matchRoute(routes: HomeframeRoute[], pathname: string): RouteMatch | nu
 export class HomeframeRouter {
   private routes: HomeframeRoute[];
   private listeners = new Set<() => void>();
+  private navigationGestureListeners = new Set<() => void>();
   private abortController: AbortController | null = null;
   private loaderAbort: AbortController | null = null;
   private navigationId = 0;
@@ -172,6 +284,16 @@ export class HomeframeRouter {
   private edgeNavigationElement: HTMLElement | null = null;
   private snapshot: RouterSnapshot;
   private readonly serverSnapshot: RouterSnapshot;
+  private navigationGesture: NavigationGestureSnapshot = {
+    phase: 'idle',
+    direction: null,
+    progress: 0,
+    delta: 0,
+    commitDistance: 0,
+    canCommit: false,
+    revision: 0,
+  };
+  private readonly serverNavigationGesture: NavigationGestureSnapshot = this.navigationGesture;
 
   constructor(routes: HomeframeRoute[], options: HomeframeRouterOptions = {}) {
     this.routes = routes;
@@ -194,6 +316,7 @@ export class HomeframeRouter {
     const url = typeof window === 'undefined' ? new URL('http://homeframe.invalid/') : currentUrl();
     this.snapshot = {
       url,
+      permalink: parsePermalink(url),
       state: undefined,
       key: 'server',
       index: 0,
@@ -209,9 +332,15 @@ export class HomeframeRouter {
 
   getSnapshot = (): RouterSnapshot => this.snapshot;
   getServerSnapshot = (): RouterSnapshot => this.serverSnapshot;
+  getNavigationGestureSnapshot = (): NavigationGestureSnapshot => this.navigationGesture;
+  getServerNavigationGestureSnapshot = (): NavigationGestureSnapshot => this.serverNavigationGesture;
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  };
+  subscribeNavigationGesture = (listener: () => void): (() => void) => {
+    this.navigationGestureListeners.add(listener);
+    return () => this.navigationGestureListeners.delete(listener);
   };
 
   canHandle(to: string | URL): boolean {
@@ -220,6 +349,67 @@ export class HomeframeRouter {
     return (url.protocol === 'http:' || url.protocol === 'https:')
       && url.origin === window.location.origin
       && isWithinScope(url.pathname, this.scope);
+  }
+
+  /** Builds a cold-launch-safe URL for a route, query-backed view, and scroll target. */
+  createPermalink(options: CreatePermalinkOptions = {}): string {
+    const base = this.snapshot.url;
+    const url = new URL(options.to ?? base, base);
+    if (url.origin !== base.origin || !isWithinScope(url.pathname, this.scope)) {
+      throw new TypeError('Homeframe permalinks must be same-origin URLs inside the router scope.');
+    }
+
+    for (const [key, value] of Object.entries(options.view ?? {})) {
+      if (RESERVED_PERMALINK_PARAMETERS.has(key)) {
+        throw new TypeError(`Homeframe reserves the permalink query parameter: ${key}`);
+      }
+      if (value === undefined) continue;
+      url.searchParams.delete(key);
+      if (value === null) continue;
+      const values = Array.isArray(value) ? value : [value];
+      for (const item of values) url.searchParams.append(key, String(item));
+    }
+
+    if (options.scroll !== undefined) {
+      url.searchParams.delete(PERMALINK_SCROLL_PARAMETER);
+      url.searchParams.delete(PERMALINK_OFFSET_PARAMETER);
+      url.hash = '';
+      if (options.scroll !== null) {
+        let scroll = options.scroll;
+        if (scroll === 'current') {
+          const scroller = typeof document === 'undefined'
+            ? null
+            : document.querySelector<HTMLElement>(
+                '[data-hf-viewport]:not([data-hf-edge-preview-content]) [data-hf-scroll-view]',
+              ) ?? document.querySelector<HTMLElement>('[data-hf-scroll-view]');
+          scroll = { top: scroller?.scrollTop ?? 0 };
+        } else if (typeof scroll === 'number') {
+          scroll = { top: scroll };
+        }
+        if ('anchor' in scroll) {
+          const anchor = scroll.anchor.trim();
+          if (!anchor) throw new TypeError('A permalink scroll anchor cannot be empty.');
+          url.hash = encodeURIComponent(anchor.slice(0, MAX_PERMALINK_ANCHOR_LENGTH));
+          const offset = boundedNumber(
+            Number.isFinite(scroll.offset) ? scroll.offset ?? 0 : 0,
+            -MAX_PERMALINK_OFFSET,
+            MAX_PERMALINK_OFFSET,
+          );
+          if (offset !== 0) url.searchParams.set(PERMALINK_OFFSET_PARAMETER, String(offset));
+        } else {
+          const top = boundedNumber(
+            Number.isFinite(scroll.top) ? scroll.top : 0,
+            0,
+            MAX_PERMALINK_SCROLL,
+          );
+          url.searchParams.set(PERMALINK_SCROLL_PARAMETER, String(Math.round(top)));
+        }
+      }
+    }
+
+    return options.absolute === false
+      ? `${url.pathname}${url.search}${url.hash}`
+      : url.href;
   }
 
   start(): () => void {
@@ -518,6 +708,7 @@ export class HomeframeRouter {
       originalIndicatorTransform: indicator?.style.transform ?? '',
     };
     this.applyEdgeOffset(gesture, 0, commitDistance);
+    this.publishNavigationGesture('tracking', gesture, commitDistance, 0);
     return gesture;
   }
 
@@ -549,6 +740,7 @@ export class HomeframeRouter {
       gesture.frameRequest = null;
       if (this.edgeGesture !== gesture) return;
       this.applyEdgeOffset(gesture, gesture.pendingOffset, commitDistance);
+      this.publishNavigationGesture('tracking', gesture, commitDistance, gesture.pendingOffset);
     });
   }
 
@@ -571,6 +763,12 @@ export class HomeframeRouter {
 
     this.cancelEdgeFrame(gesture);
     this.applyEdgeOffset(gesture, gesture.pendingOffset, commitDistance);
+    this.publishNavigationGesture(
+      shouldCommit ? 'committing' : 'cancelling',
+      gesture,
+      commitDistance,
+      gesture.pendingOffset,
+    );
     document.documentElement.dataset.hfEdgeSettling = shouldCommit ? 'commit' : 'cancel';
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     if (this.edgeGesture !== gesture) return;
@@ -619,6 +817,12 @@ export class HomeframeRouter {
       const vertical = touch.clientY - gesture.startY;
       const directionalDelta = gesture.direction === 'back' ? horizontal : -horizontal;
       if (!gesture.claimed && Math.abs(vertical) > Math.max(10, directionalDelta)) {
+        this.publishNavigationGesture(
+          'cancelling',
+          gesture,
+          edgeNavigation.commitDistance,
+          gesture.pendingOffset,
+        );
         this.resetEdgeGesture();
         return;
       }
@@ -662,6 +866,34 @@ export class HomeframeRouter {
     }
     delete document.documentElement.dataset.hfEdgeNavigation;
     delete document.documentElement.dataset.hfEdgeSettling;
+    this.publishNavigationGesture('idle', null, 0, 0);
+  }
+
+  private publishNavigationGesture(
+    phase: NavigationGestureSnapshot['phase'],
+    gesture: EdgeGesture | null,
+    commitDistance: number,
+    delta: number,
+  ): void {
+    if (phase === 'idle' && this.navigationGesture.phase === 'idle') return;
+    const phaseChanged = phase !== this.navigationGesture.phase;
+    const normalizedDelta = Math.max(0, delta);
+    const next: NavigationGestureSnapshot = {
+      phase,
+      direction: gesture?.direction ?? null,
+      progress: commitDistance > 0
+        ? Math.min(1, normalizedDelta / commitDistance)
+        : 0,
+      delta: normalizedDelta,
+      commitDistance,
+      canCommit: phase !== 'idle' && commitDistance > 0 && normalizedDelta >= commitDistance,
+      revision: this.navigationGesture.revision + 1,
+    };
+    this.navigationGesture = next;
+    for (const listener of this.navigationGestureListeners) listener();
+    // Progress belongs to the dedicated external store and may update every
+    // frame. The shared telemetry/event stream receives phase boundaries only.
+    if (phaseChanged) emitRuntimeEvent('navigation-gesture-change', next);
   }
 
   private async resolve(
@@ -715,7 +947,16 @@ export class HomeframeRouter {
   }
 
   private publish(patch: Omit<Partial<RouterSnapshot>, 'revision'>): void {
-    this.snapshot = { ...this.snapshot, ...patch, revision: this.snapshot.revision + 1 };
+    const nextUrl = patch.url ?? this.snapshot.url;
+    const permalink = nextUrl.href === this.snapshot.url.href
+      ? this.snapshot.permalink
+      : parsePermalink(nextUrl);
+    this.snapshot = {
+      ...this.snapshot,
+      ...patch,
+      permalink,
+      revision: this.snapshot.revision + 1,
+    };
     if (typeof document !== 'undefined') {
       document.documentElement.dataset.hfNudges = this.snapshot.match?.route.nudgePolicy ?? 'allow';
       document.documentElement.dataset.hfRouterReady = this.snapshot.status === 'loading'

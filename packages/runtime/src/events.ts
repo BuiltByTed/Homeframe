@@ -7,6 +7,7 @@ export type HomeframeEventName =
   | 'service-worker-change'
   | 'update-change'
   | 'route-change'
+  | 'navigation-gesture-change'
   | 'resume-duration'
   | 'update-deferral'
   | 'worker-failure'

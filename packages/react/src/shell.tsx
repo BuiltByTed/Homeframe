@@ -143,11 +143,17 @@ export interface AppScrollViewHandle {
   reveal(element: Element): void;
 }
 
+export type AppScrollTarget =
+  | { readonly type: 'position'; readonly top: number }
+  | { readonly type: 'anchor'; readonly anchor: string; readonly offset: number };
+
 export interface AppScrollViewProps extends HTMLAttributes<HTMLElement> {
   as?: ElementType;
   scrollKey?: string;
   navigationType?: 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
   scrollBehavior?: 'reset' | 'restore' | 'preserve';
+  /** A URL-backed cold-launch target supplied by `useRouteScrollRestoration()`. */
+  permalinkScroll?: AppScrollTarget | null;
   revealFocusedControl?: boolean;
 }
 
@@ -159,6 +165,7 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
     scrollKey,
     navigationType = 'unknown',
     scrollBehavior,
+    permalinkScroll,
     revealFocusedControl = true,
     onScroll,
     ...props
@@ -177,15 +184,25 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       // contents. Reading scrollTop here is too late: a shorter destination may
       // already have clamped the shared scroller and would corrupt restoration.
       activeScrollKey.current = scrollKey;
-      if (!scrollKey || !ref.current) return;
+      if ((!scrollKey && !permalinkScroll) || !ref.current) return;
       const action = scrollBehavior ?? (navigationType === 'back'
         || navigationType === 'forward'
         || navigationType === 'reload' ? 'restore' : 'reset');
-      if (action === 'preserve') return;
+      if (action === 'preserve' && !permalinkScroll) return;
       const node = ref.current;
-      const target = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
-      node.scrollTop = target;
-      if (action !== 'restore' || target <= 0 || Math.abs(node.scrollTop - target) < 1) return;
+      const restoredTop = action === 'restore' && scrollKey
+        ? scrollPositions.get(scrollKey) ?? 0
+        : 0;
+      const applyTarget = () => {
+        const target = permalinkScroll
+          ? permalinkTargetTop(node, permalinkScroll)
+          : restoredTop;
+        if (target === null) return false;
+        node.scrollTop = target;
+        return Math.abs(node.scrollTop - target) < 1;
+      };
+      if (applyTarget()) return;
+      if (!permalinkScroll && (action !== 'restore' || restoredTop <= 0)) return;
 
       // Route data frequently arrives after the destination scroller mounts.
       // A one-shot assignment is clamped against the short loading state and
@@ -200,8 +217,7 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       };
       const retry = () => {
         if (cancelled || ref.current !== node || performance.now() >= deadline) return;
-        node.scrollTop = target;
-        if (Math.abs(node.scrollTop - target) < 1) return;
+        if (applyTarget()) return;
         frame = requestAnimationFrame(retry);
       };
       for (const eventName of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
@@ -214,7 +230,7 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
           node.removeEventListener(eventName, cancel, { capture: true });
         }
       };
-    }, [navigationType, scrollBehavior, scrollKey]);
+    }, [navigationType, permalinkScroll, scrollBehavior, scrollKey]);
 
     // Keep the mounted node in the cleanup closure. React detaches object refs
     // during the mutation phase before layout cleanup runs in a real browser,
@@ -250,6 +266,23 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       });
   },
 );
+
+function permalinkTargetTop(scroller: HTMLElement, target: AppScrollTarget): number | null {
+  if (target.type === 'position') return Math.max(0, target.top);
+  const byId = document.getElementById(target.anchor);
+  const anchor = byId && scroller.contains(byId)
+    ? byId
+    : [...scroller.querySelectorAll<HTMLElement>('[data-hf-permalink-anchor]')]
+        .find(element => element.dataset.hfPermalinkAnchor === target.anchor) ?? null;
+  if (!anchor) return null;
+  return Math.max(
+    0,
+    scroller.scrollTop
+      + anchor.getBoundingClientRect().top
+      - scroller.getBoundingClientRect().top
+      - target.offset,
+  );
+}
 
 function revealInside(scroller: HTMLElement | null, element: Element): void {
   if (!scroller || !scroller.contains(element)) return;

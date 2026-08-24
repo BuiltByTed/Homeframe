@@ -9,6 +9,7 @@
     "packages/**/*.tsx",
     "examples/**/*.ts",
     "examples/**/*.tsx",
+    "scripts/**/*.ts",
     "tests/**/*.ts",
     "vite.config.ts",
     "playwright.config.ts"

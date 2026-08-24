@@ -40,7 +40,9 @@ import {
   RouterOutlet,
   createHomeframeRouter,
   useNavigationDirection,
+  useNavigationGesture,
   useHomeframeRouter,
+  usePermalink,
   useRouteScrollRestoration,
   useRouterSnapshot,
   type RouteMatch,
@@ -65,12 +67,18 @@ const cards = Array.from({ length: 30 }, (_, index) => ({
   title: `Restoration item ${index + 1}`,
   text: 'Scroll here, change routes, then swipe back to verify the exact scroll position is restored.',
 }));
+const permalinkItems = Array.from({ length: 24 }, (_, index) => ({
+  id: index + 1,
+  title: index % 3 === 0 ? `Keyboard finding ${index + 1}` : `Release finding ${index + 1}`,
+  text: 'This stable item id can be opened directly after a cold launch or on another device.',
+}));
 
 const router = createHomeframeRouter([
   { id: 'home', path: appPath(), element: <OverviewPage /> },
   { id: 'keyboard', path: appPath('/keyboard'), element: <KeyboardPage /> },
   { id: 'history', path: appPath('/history'), element: <HistoryPage /> },
   { id: 'detail', path: appPath('/history/:id'), element: (match) => <DetailPage match={match} /> },
+  { id: 'permalink', path: appPath('/permalinks/:view'), element: (match) => <PermalinkPage match={match} /> },
   { id: 'pwa', path: appPath('/pwa'), element: <PwaPage /> },
   { id: 'settings', path: appPath('/settings'), element: <SettingsPage /> },
   { id: 'recovery', path: appPath('/__homeframe/recovery'), element: <HomeframeRecovery title="Homeframe recovery" /> },
@@ -147,7 +155,7 @@ function useThemePreference() {
 
 function ApplicationShell() {
   const route = useRouterSnapshot();
-  const { scrollKey, direction } = useRouteScrollRestoration();
+  const { scrollKey, direction, permalinkScroll } = useRouteScrollRestoration();
   return (
     <AppViewport className="app-viewport">
       <AppShell
@@ -160,6 +168,7 @@ function ApplicationShell() {
             className="page-scroll"
             scrollKey={scrollKey}
             navigationType={direction}
+            permalinkScroll={permalinkScroll}
             data-route={route.match?.route.id}
           >
             <RouteStatus />
@@ -213,7 +222,13 @@ function ShellBottom({ routeId }: { routeId: string | undefined }) {
 
 function RouteStatus() {
   const direction = useNavigationDirection();
-  return <output className="route-direction" aria-live="polite">Navigation: {direction}</output>;
+  const gesture = useNavigationGesture();
+  return (
+    <output className="route-direction" aria-live="polite">
+      Navigation: {direction} · swipe {gesture.phase}
+      {gesture.direction ? ` ${gesture.direction} ${Math.round(gesture.progress * 100)}%` : ''}
+    </output>
+  );
 }
 
 function Page({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
@@ -242,6 +257,7 @@ function OverviewPage() {
       <div className="feature-list">
         <FeatureLink to={appPath('/keyboard')} icon="⌨" title="Keyboard & safe areas">Focus controls at every scroll depth.</FeatureLink>
         <FeatureLink to={appPath('/history')} icon="⇄" title="History & restoration">Use links and native edge swipes.</FeatureLink>
+        <FeatureLink to={appPath('/permalinks/release-board')} icon="⌁" title="Deep links & permalinks">Share a route, view, anchor, or exact scroll position.</FeatureLink>
         <FeatureLink to={appPath('/pwa')} icon="◉" title="Install, update & notify">Exercise all PWA capability states.</FeatureLink>
       </div>
       <div className="copy-card">
@@ -301,6 +317,95 @@ function DetailPage({ match }: { match: RouteMatch }) {
       <p>Swipe from the left edge or use the browser back command. The prior list should return to exactly the same scroll position without refreshing.</p>
       <button onClick={() => router.back()}>Go back</button>
       <div className="detail-orbit" aria-hidden="true"><span>{id}</span></div>
+    </Page>
+  );
+}
+
+function PermalinkPage({ match }: { match: RouteMatch }) {
+  const router = useHomeframeRouter();
+  const permalink = usePermalink();
+  const [captured, setCaptured] = useState('');
+  const viewValue = (key: string) => {
+    const value = permalink.view[key];
+    return Array.isArray(value) ? value[0] ?? '' : value ?? '';
+  };
+  const mode = viewValue('mode') || 'comfortable';
+  const filter = viewValue('filter') || 'all';
+  const routeView = match.params.view ?? 'unknown';
+  const updateView = (key: string, value: string) => {
+    void router.navigate(permalink.create({
+      view: { [key]: value === 'all' ? null : value },
+      scroll: null,
+      absolute: false,
+    }), { replace: true, preventScrollReset: true });
+  };
+  const anchoredExample = permalink.create({
+    to: appPath('/permalinks/release-board'),
+    view: { mode: 'compact', filter: 'keyboard' },
+    scroll: { anchor: 'permalink-item-7', offset: 12 },
+    absolute: false,
+  });
+  const visibleItems = filter === 'keyboard'
+    ? permalinkItems.filter(item => item.title.startsWith('Keyboard'))
+    : permalinkItems;
+
+  return (
+    <Page eyebrow="Permalink lab" title={`Cold-launch view: ${routeView}`}>
+      <p>
+        The path selects the route and view identity, ordinary query parameters
+        hold shareable UI state, and the fragment or <code>__hf_scroll</code>
+        restores a stable anchor or exact position.
+      </p>
+      <div className="metric-grid permalink-metrics">
+        <Metric label="Route parameter" value={routeView} />
+        <Metric label="Scroll target" value={permalink.scroll?.type ?? 'none'} />
+      </div>
+      <div className="permalink-controls">
+        <FormRow label="Layout">
+          <HomeframeSelect
+            aria-label="Permalink layout"
+            value={mode}
+            onChange={(event) => updateView('mode', event.target.value)}
+          >
+            <option value="comfortable">Comfortable</option>
+            <option value="compact">Compact</option>
+          </HomeframeSelect>
+        </FormRow>
+        <FormRow label="Filter">
+          <HomeframeSelect
+            aria-label="Permalink filter"
+            value={filter}
+            onChange={(event) => updateView('filter', event.target.value)}
+          >
+            <option value="all">All findings</option>
+            <option value="keyboard">Keyboard findings</option>
+          </HomeframeSelect>
+        </FormRow>
+        <Link to={anchoredExample} className="button-link">Open the anchored example</Link>
+        <button onClick={() => setCaptured(permalink.create({ scroll: 'current' }))}>
+          Capture this exact scroll position
+        </button>
+      </div>
+      {captured && (
+        <div className="copy-card permalink-output">
+          <strong>Share-ready URL</strong>
+          <SelectableText as="code">{captured}</SelectableText>
+          <Link to={captured} className="button-link">Open captured permalink</Link>
+        </div>
+      )}
+      <div className="permalink-list" data-layout={mode}>
+        {visibleItems.map(item => (
+          <article
+            key={item.id}
+            id={`permalink-item-${item.id}`}
+            data-hf-permalink-anchor={`permalink-item-${item.id}`}
+            className="permalink-item"
+          >
+            <span>{item.id}</span>
+            <div><strong>{item.title}</strong><p>{item.text}</p></div>
+          </article>
+        ))}
+      </div>
     </Page>
   );
 }

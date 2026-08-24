@@ -117,6 +117,32 @@ test('button navigation starts the destination at the top while history restores
   expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(650, -1);
 });
 
+test('cold-launch permalinks restore route, view state, anchors, and exact scroll', async ({ page }) => {
+  await page.goto('/permalinks/release-board?mode=compact&filter=keyboard&__hf_offset=12#permalink-item-7');
+  await expect(page.getByRole('heading', { name: 'Cold-launch view: release-board' })).toBeVisible();
+  await expect(page.getByLabel('Permalink layout')).toHaveValue('compact');
+  await expect(page.getByLabel('Permalink filter')).toHaveValue('keyboard');
+  const scroller = page.locator('[data-hf-scroll-view]');
+  const anchor = page.locator('#permalink-item-7');
+  await expect(anchor).toBeVisible();
+  await expect.poll(async () => {
+    const [scrollBox, anchorBox] = await Promise.all([scroller.boundingBox(), anchor.boundingBox()]);
+    return Math.round((anchorBox?.y ?? 0) - (scrollBox?.y ?? 0));
+  }).toBe(12);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  await scroller.evaluate((element) => {
+    element.scrollTop = 340;
+    element.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  await page.getByRole('button', { name: 'Capture this exact scroll position' }).click();
+  const captured = await page.locator('.permalink-output code').textContent();
+  expect(captured).toContain('__hf_scroll=340');
+  await page.goto(captured!);
+  await expect(page.getByRole('heading', { name: 'Cold-launch view: release-board' })).toBeVisible();
+  await expect.poll(() => scroller.evaluate(element => element.scrollTop)).toBeCloseTo(340, -1);
+});
+
 test('generated metadata and worker expose the required PWA contract', async ({ page, request }) => {
   const html = await (await request.get('/')).text();
   const manifest = await (await request.get('/manifest.webmanifest')).json();

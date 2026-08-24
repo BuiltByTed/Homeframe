@@ -20,6 +20,7 @@ The same application runs as an installable desktop Chrome PWA. Safari browser m
 | Labels, icons, and navigation text become selected or show callouts. | UI text selection and touch callouts are disabled by default while form controls, code, and explicit `data-hf-selectable` regions remain selectable. |
 | An edge Back/Forward swipe exposes a white system surface in a light OS theme. | Installed iOS/iPadOS mode uses an interactive, finger-tracking in-app history transition with a cached destination scene. Safari, Chrome, and desktop PWAs retain browser History API navigation. |
 | Back/Forward refreshes the destination or loses scroll; button navigation inherits stale scroll. | Routes are same-document, keyed entries. History traversal restores per-entry scroll, while links, buttons, and tabs start the destination at the top. |
+| A copied link opens the app but loses the selected view or scroll target. | URL-backed permalinks combine route parameters, query-backed view state, and either a stable fragment anchor or an optional exact `AppScrollView` position. They survive cold launch, process death, installation mode, and another device. |
 | An internal app scroller loses the familiar quick route back to the top. | Tapping a non-interactive part of the app-owned header scrolls the active `AppScrollView` to top; interactive header controls remain untouched. iOS does not expose the native status-bar tap itself to web JavaScript. |
 | Returning from the app switcher flashes an empty white page. | Generated launch images, a static pre-React splash, lifecycle snapshots, and an explicit app canvas cover cold start and resume. |
 | Icons, splash images, manifest fields, status-bar metadata, and theme colors drift apart. | One typed config generates Apple touch icons, maskable icons, startup images, adaptive metadata, and the web manifest. Color mode can follow the system or force light/dark. |
@@ -44,7 +45,7 @@ npm run demo:serve -- --port=4180
 
 Open `http://localhost:4180` for ordinary local testing. A non-loopback iPhone or Mac needs HTTPS for service workers, installation, and notifications; see [docs/secure-local-testing.md](./docs/secure-local-testing.md).
 
-The kitchen-sink app exercises safe areas, keyboard docking, focus zoom, routing, scroll restoration, offline mode, updates, install education, push subscriptions, notifications, badging, lifecycle restore, and diagnostics. Add `?homeframe-debug` to show the geometry HUD.
+The kitchen-sink app exercises safe areas, keyboard docking, focus zoom, routing, history restoration, cold-launch permalinks, URL-backed view state, offline mode, updates, install education, push subscriptions, notifications, badging, lifecycle restore, and diagnostics. Add `?homeframe-debug` to show the geometry HUD.
 
 The hosted GitHub Pages build is static, so its local notification flow works but its “send real web push” control explains how to run the server-backed delivery test locally.
 
@@ -106,6 +107,55 @@ export default defineHomeframe({
 Set `app.colorScheme` to `system` (the default), `light`, or `dark`. System mode emits adaptive browser metadata, critical canvas colors, and light/dark Apple startup images. A forced scheme locks the document canvas and generated assets; Homeframe separately avoids iOS's OS-owned light swipe fallback by selecting managed edge navigation in installed iOS/iPadOS web apps.
 
 The router's default `historyMode: 'auto'` uses ordinary History API entries in Safari, Chrome, and desktop PWAs. Installed iOS/iPadOS web apps use a URL-synchronized managed stack plus left-edge Back and right-edge Forward gestures because WebKit's native snapshot view can fall back to an unpaintable system-white surface. Use `historyMode: 'browser'` to opt back into the native installed gesture, or `historyMode: 'managed'` to exercise the fallback in tests.
+
+### Deep links and permalinks
+
+Every in-scope path, query string, and fragment is directly loadable as long as the production server rewrites document routes to the Homeframe entry document. The generated service worker applies the same scoped document fallback offline, and the Pages example ships a matching `404.html` shell.
+
+`history.state` remains private to one browser history entry and is not shareable. Put durable view state in the URL instead:
+
+```tsx
+const permalink = usePermalink();
+
+const shareUrl = permalink.create({
+  to: '/projects/42',
+  view: { tab: 'activity', filter: ['open', 'assigned'] },
+  scroll: { anchor: 'comment-7', offset: 12 },
+});
+
+const { scrollKey, direction, scrollBehavior, permalinkScroll } =
+  useRouteScrollRestoration();
+
+<AppScrollView
+  scrollKey={scrollKey}
+  navigationType={direction}
+  scrollBehavior={scrollBehavior}
+  permalinkScroll={permalinkScroll}
+>
+  <article id="comment-7">…</article>
+</AppScrollView>;
+```
+
+The path identifies the route/view, `view` patches ordinary query parameters, and the fragment targets either an element `id` or `data-hf-permalink-anchor`. Prefer stable semantic anchors when possible. Use `scroll: 'current'` to capture the exact internal scroll position into `__hf_scroll` when pixel-level restoration is genuinely useful. Both forms retry while async route content arrives and yield immediately to user scrolling.
+
+The live kitchen sink includes a **Deep links & permalinks** lab with query-controlled layout/filter state, an anchor permalink, and exact-position capture.
+
+### Reactive framework state
+
+Homeframe exposes state through narrowly subscribed hooks instead of injecting a giant props object. Apps can consume a hook in a container and pass the result into any app-owned component:
+
+| Hook | Reactive state |
+| --- | --- |
+| `useKeyboard()` | `opening`, `open`, `closing`, or `closed`; height and geometry source |
+| `useViewport()` / `useSafeArea()` / `useDisplayMode()` | visual and stable dimensions, offsets, scale, all safe-area insets, browser/standalone/fullscreen mode |
+| `useNavigationGesture()` | `idle`, `tracking`, `committing`, or `cancelling`; Back/Forward direction, progress, delta, and commit threshold |
+| `useRouterSnapshot()` / `useNavigationDirection()` | URL, route match/params/data, entry key/index, push/replace/reload/Back/Forward direction, loading/error status |
+| `usePermalink()` | decoded portable view/scroll state and the share-ready URL builder |
+| `useAppLifecycle()` | `booting`, `visible`, `hidden`, or `restoring`; persisted-page and visibility timestamps |
+| `useServiceWorker()` / `useHomeframeUpdate()` | worker build, update readiness, deferrals, guards, errors, and actions |
+| `useInstallCapability()` / `useNotificationCapability()` | eligibility, blockers, permission/subscription state, and user-gesture actions |
+
+Non-React code can use `subscribeRuntimeEvents()`. The same local event stream includes viewport, lifecycle, route, navigation-gesture, worker, install, notification, recovery, and diagnostic transitions; telemetry is opt-in and app-owned.
 
 Desktop apps that opt into `displayOverride: ['window-controls-overlay',
 'standalone']` can pass `windowControlsOverlay` to `AppHeader` and place draggable
@@ -199,11 +249,13 @@ Mobile Safari and the actual installed Home Screen app viewport contract.
 Simulator coverage is a regression gate, not a substitute for the physical-device
 release matrix in the spec.
 
+All authored JavaScript-runtime source, Node tooling, tests, and configuration are strict TypeScript. `npm run check:typescript` rejects `.js`, `.jsx`, `.mjs`, or `.cjs` source outside generated/dependency directories. CSS, HTML, JSON, and the native XCUITest harness remain in their platform-native formats; generated package and app output is JavaScript under `dist`.
+
 ## Workspace packages
 
 - `@homeframe/runtime`: viewport, safe area, keyboard, lifecycle, install, and local events.
 - `@homeframe/react`: shell primitives, inputs, readiness/snapshot UI, headless nudges, diagnostics, checkpoints, updates, and badges.
-- `@homeframe/router`: scoped History API routing, real links, direction, loaders, prefetch, and scroll keys.
+- `@homeframe/router`: scoped History API routing, real links, direction, loaders, prefetch, navigation-gesture state, deep links, permalinks, and scroll keys.
 - `@homeframe/sw`: generated worker, update client, runtime caching, push transport, and badging.
 - `@homeframe/vite`: validation, document metadata, icons, startup images, manifest, bootstrap, and worker generation.
 - `@homeframe/cli`: `init`, `migrate`, `upgrade`, and `doctor`.

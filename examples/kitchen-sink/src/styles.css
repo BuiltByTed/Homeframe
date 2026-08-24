@@ -475,6 +475,72 @@ select:focus-visible {
   font-weight: 900;
 }
 
+.permalink-metrics {
+  margin: 1.25rem 0;
+}
+
+.permalink-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 1.25rem;
+}
+
+.permalink-controls .form-row {
+  margin: 0;
+}
+
+.permalink-controls :is(button, .button-link) {
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.permalink-output {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.permalink-output code {
+  overflow-wrap: anywhere;
+}
+
+.permalink-list {
+  display: grid;
+  gap: 10px;
+}
+
+.permalink-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  min-height: 94px;
+  padding: 16px;
+  border: 1px solid var(--demo-line);
+  border-radius: 16px;
+  background: var(--demo-panel-soft);
+  scroll-margin-top: 12px;
+}
+
+.permalink-list[data-layout='compact'] .permalink-item {
+  min-height: 70px;
+  padding: 11px 14px;
+}
+
+.permalink-item > span {
+  color: var(--demo-accent);
+  font-weight: 800;
+}
+
+.permalink-item p {
+  margin: 5px 0 0;
+  color: var(--demo-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .capability-card {
   margin: 14px 0;
 }
@@ -572,5 +638,11 @@ select:focus-visible {
 
   [data-hf-dock] {
     background: transparent;
+  }
+}
+
+@media (max-width: 520px) {
+  .permalink-controls {
+    grid-template-columns: 1fr;
   }
 }
