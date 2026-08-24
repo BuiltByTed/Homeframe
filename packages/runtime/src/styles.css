@@ -336,6 +336,17 @@
     scrollbar-gutter: stable;
   }
 
+  /*
+   * A focused content control can sit at the very end of a route. When the
+   * software keyboard opens, WebKit reduces the visible viewport without
+   * adding any scrollable range of its own. Reserve that measured occlusion
+   * so AppScrollView can always reveal the control above the keyboard.
+   */
+  :root[data-hf-keyboard-target='content'] [data-hf-scroll-view] {
+    padding-bottom: calc(var(--hf-keyboard-height) + 12px);
+    scroll-padding-bottom: calc(var(--hf-keyboard-height) + 12px);
+  }
+
   [data-hf-dock] {
     position: relative;
     z-index: 20;
@@ -474,7 +485,9 @@
   [data-hf-edge-guard] {
     position: absolute;
     top: 0;
-    bottom: 0;
+    /* The bottom dock owns its complete physical hit area, including safe
+     * area and inset gutters. Edge navigation starts above that region. */
+    bottom: var(--hf-bottom-height);
     width: var(--hf-edge-width, 24px);
     pointer-events: auto;
     touch-action: none;

@@ -388,6 +388,7 @@ function KeyboardPage() {
       <FormRow label="Select"><HomeframeSelect defaultValue="two"><option value="one">One</option><option value="two">Two</option><option value="three">Three</option></HomeframeSelect></FormRow>
       <FormRow label="Textarea"><HomeframeTextarea rows={5} placeholder="A larger editable region" /></FormRow>
       {Array.from({ length: 8 }, (_, index) => <p key={index} className="filler">Scroll anchor {index + 1}. The focus reveal should move only this content pane.</p>)}
+      <FormRow label="Trailing field"><HomeframeInput type="text" placeholder="Final control at page end" /></FormRow>
     </Page>
   );
 }

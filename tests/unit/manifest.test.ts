@@ -178,4 +178,34 @@ describe('manifest generation', () => {
     await buildStart.call({ emitFile } as never, {} as never);
     expect(emitFile).not.toHaveBeenCalled();
   });
+
+  it('omits the splash title row when an app requests a logo-only splash', async () => {
+    const plugin = homeframe({
+      ...config,
+      app: {
+        ...config.app,
+        icon: resolve(process.cwd(), 'examples/kitchen-sink/brand/icon.svg'),
+      },
+      splash: { title: '', generateAppleStartupImages: false },
+    });
+    const configResolved = plugin.configResolved;
+    const transformIndexHtml = plugin.transformIndexHtml;
+    if (typeof configResolved !== 'function' || typeof transformIndexHtml !== 'function') {
+      throw new TypeError('Expected function-form Vite hooks.');
+    }
+    configResolved.call({ warn: vi.fn() } as never, {
+      root: process.cwd(),
+      base: '/',
+      command: 'serve',
+      build: { outDir: 'dist' },
+    } as never);
+    const transformed = await transformIndexHtml.call(
+      {} as never,
+      '<html><head></head><body><div id="homeframe-root"></div></body></html>',
+      {} as never,
+    );
+    expect(transformed).toContain('id="homeframe-boot-splash"');
+    expect(transformed).toMatch(/id="homeframe-boot-splash"[^>]*><img [^>]+><\/div>/);
+    expect(transformed).not.toContain('alt=""><span>');
+  });
 });

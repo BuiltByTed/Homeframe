@@ -139,6 +139,67 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 
+test('reserves enough route scroll range to reveal a trailing field above the keyboard', async ({ page }) => {
+  await navigateFromShell(page, /Keyboard/);
+  const field = page.getByPlaceholder('Final control at page end');
+  const scroller = page.locator('[data-hf-scroll-view]');
+  await scroller.evaluate((element) => { element.scrollTop = 0; });
+  const revealed = await page.evaluate(async () => {
+    const viewport = window.visualViewport!;
+    const originalHeight = viewport.height;
+    const input = document.querySelector<HTMLInputElement>('input[placeholder="Final control at page end"]')!;
+    input.focus({ preventScroll: true });
+    Object.defineProperties(viewport, {
+      height: { configurable: true, value: originalHeight - 300 },
+      offsetTop: { configurable: true, value: 0 },
+      pageTop: { configurable: true, value: 0 },
+    });
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise(resolve => setTimeout(resolve, 1_000));
+    const scroll = document.querySelector<HTMLElement>('[data-hf-scroll-view]')!;
+    return {
+      fieldBottom: Math.round(input.getBoundingClientRect().bottom),
+      visibleBottom: Math.round(originalHeight - 312),
+      scrollTop: Math.round(scroll.scrollTop),
+      scrollRange: Math.round(scroll.scrollHeight - scroll.clientHeight),
+      keyboardHeight: getComputedStyle(document.documentElement).getPropertyValue('--hf-keyboard-height').trim(),
+      keyboardTarget: document.documentElement.dataset.hfKeyboardTarget,
+      windowY: window.scrollY,
+    };
+  });
+  expect(revealed.fieldBottom).toBeLessThanOrEqual(revealed.visibleBottom);
+  expect(revealed.scrollTop).toBeGreaterThan(0);
+  expect(revealed.scrollRange).toBeGreaterThanOrEqual(revealed.scrollTop);
+  expect(revealed).toMatchObject({
+    keyboardHeight: '300px',
+    keyboardTarget: 'content',
+    windowY: 0,
+  });
+  await expect(field).toBeFocused();
+});
+
+test('edge navigation yields the complete bottom dock hit area', async ({ page }) => {
+  const geometry = await page.evaluate(() => {
+    const surface = document.createElement('div');
+    const guard = document.createElement('i');
+    surface.dataset.hfEdgeNavigationSurface = '';
+    guard.dataset.hfEdgeGuard = 'back';
+    surface.append(guard);
+    document.body.append(surface);
+    document.documentElement.style.setProperty('--hf-bottom-height', '73px');
+    const result = {
+      guardBottom: Math.round(guard.getBoundingClientRect().bottom),
+      viewportBottom: Math.round(document.querySelector('[data-hf-viewport]')!.getBoundingClientRect().bottom),
+      computedBottom: getComputedStyle(guard).bottom,
+    };
+    surface.remove();
+    document.documentElement.style.removeProperty('--hf-bottom-height');
+    return result;
+  });
+  expect(geometry.computedBottom).toBe('73px');
+  expect(geometry.guardBottom).toBe(geometry.viewportBottom - 73);
+});
+
 test('a vertical drag beginning on a dock input scrolls content without focusing it', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const composer = page.getByPlaceholder('Persistent bottom composer');
