@@ -52,6 +52,10 @@ export function homeframe(config: HomeframeConfig): Plugin {
     },
     async buildStart() {
       generated = await assetsPromise!;
+      // Vite also invokes buildStart for the dev server, whose plugin context
+      // cannot emit Rollup build assets. configureServer serves this generated
+      // set directly in development.
+      if (vite.command !== 'build') return;
       for (const asset of generated.assets) this.emitFile({
         type: 'asset',
         fileName: asset.fileName,

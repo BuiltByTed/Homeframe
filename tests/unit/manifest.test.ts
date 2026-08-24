@@ -1,7 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createManifest,
   defineHomeframe,
+  homeframe,
   runtimeCacheOverlapWarnings,
   validateConfig,
 } from '@homeframe/vite';
@@ -150,5 +152,30 @@ describe('manifest generation', () => {
       share_target: { action: '/share', method: 'POST', enctype: 'multipart/form-data' },
       protocol_handlers: [{ protocol: 'web+homeframe', url: '/open?value=%s' }],
     });
+  });
+
+  it('serves generated assets in development without using Rollup emitFile', async () => {
+    const plugin = homeframe({
+      ...config,
+      app: {
+        ...config.app,
+        icon: resolve(process.cwd(), 'examples/kitchen-sink/brand/icon.svg'),
+      },
+      splash: { generateAppleStartupImages: false },
+    });
+    const configResolved = plugin.configResolved;
+    const buildStart = plugin.buildStart;
+    if (typeof configResolved !== 'function' || typeof buildStart !== 'function') {
+      throw new TypeError('Expected function-form Vite hooks.');
+    }
+    configResolved.call({ warn: vi.fn() } as never, {
+      root: process.cwd(),
+      base: '/',
+      command: 'serve',
+      build: { outDir: 'dist' },
+    } as never);
+    const emitFile = vi.fn();
+    await buildStart.call({ emitFile } as never, {} as never);
+    expect(emitFile).not.toHaveBeenCalled();
   });
 });

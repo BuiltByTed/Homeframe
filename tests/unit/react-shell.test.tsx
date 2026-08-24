@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
@@ -11,6 +11,7 @@ import {
   HomeframeReadinessProvider,
   SelectableText,
   useHomeframeReadiness,
+  useHomeframeUpdate,
   useNudgeCoordinator,
 } from '@homeframe/react';
 
@@ -58,6 +59,19 @@ describe('React shell primitives', () => {
     const inlineStyle = screen.getByLabelText('Name').getAttribute('style') ?? '';
     expect(inlineStyle).toContain('color: red');
     expect(container.querySelector('[data-hf-selectable]')).toHaveTextContent('Copy me');
+  });
+
+  it('keeps service-worker actions stable across update snapshots and rerenders', async () => {
+    render(
+      <HomeframeProvider>
+        <UpdateGuardHarness />
+      </HomeframeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('guard-count')).toHaveTextContent('1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Rerender guard' }));
+    expect(screen.getByTestId('guard-count')).toHaveTextContent('1');
+    expect(screen.getByTestId('guard-registrations')).toHaveTextContent('1');
   });
 
   it('preserves a shared route scroller for URL-only modal replacements', () => {
@@ -264,4 +278,21 @@ function ReadinessHarness() {
   const readiness = useHomeframeReadiness();
   useEffect(() => readiness.hold('restore-session'), []);
   return <div>Application boot</div>;
+}
+
+function UpdateGuardHarness() {
+  const update = useHomeframeUpdate();
+  const registrations = useRef(0);
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    registrations.current += 1;
+    return update.registerGuard(() => true);
+  }, [update.registerGuard]);
+  return (
+    <div>
+      <output data-testid="guard-count">{update.guardCount}</output>
+      <output data-testid="guard-registrations">{registrations.current}</output>
+      <button onClick={() => rerender(value => value + 1)}>Rerender guard</button>
+    </div>
+  );
 }
