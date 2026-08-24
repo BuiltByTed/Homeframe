@@ -41,6 +41,9 @@ export class HomeframeServiceWorkerClient {
   private hadControllerAtStart = false;
   private safePointTimer: number | null = null;
   private rootObserver: MutationObserver | null = null;
+  private checkPromise: Promise<void> | null = null;
+  private updateGeneration = 0;
+  private redundantWorkerTimer: number | null = null;
   private readonly clientId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
   private coordinationChannel: BroadcastChannel | null = null;
   private coordinationStorageKey = '';
@@ -146,6 +149,8 @@ export class HomeframeServiceWorkerClient {
     this.intervalId = null;
     if (this.safePointTimer !== null) window.clearTimeout(this.safePointTimer);
     this.safePointTimer = null;
+    if (this.redundantWorkerTimer !== null) window.clearTimeout(this.redundantWorkerTimer);
+    this.redundantWorkerTimer = null;
     this.rootObserver?.disconnect();
     this.rootObserver = null;
     this.coordinationChannel?.close();
@@ -164,7 +169,18 @@ export class HomeframeServiceWorkerClient {
     };
   }
 
-  async check(): Promise<void> {
+  check(): Promise<void> {
+    if (this.checkPromise) return this.checkPromise;
+    const promise = this.performCheck();
+    this.checkPromise = promise;
+    const clearCheck = () => {
+      if (this.checkPromise === promise) this.checkPromise = null;
+    };
+    void promise.then(clearCheck, clearCheck);
+    return promise;
+  }
+
+  private async performCheck(): Promise<void> {
     if (!this.registration) return;
     this.lastCheckAt = Date.now();
     this.publish({ state: 'checking', error: null });
@@ -207,15 +223,59 @@ export class HomeframeServiceWorkerClient {
     registration.addEventListener('updatefound', () => {
       const installing = registration.installing;
       if (!installing) return;
-      this.publish({ state: 'downloading' });
+      const generation = ++this.updateGeneration;
+      const activeAtStart = registration.active;
+      if (this.redundantWorkerTimer !== null) {
+        window.clearTimeout(this.redundantWorkerTimer);
+        this.redundantWorkerTimer = null;
+      }
+      this.publish({ state: 'downloading', error: null });
       installing.addEventListener('statechange', () => {
         if (installing.state === 'installed' && navigator.serviceWorker.controller) {
           this.onWaiting(registration.waiting ?? installing);
         } else if (installing.state === 'redundant') {
-          this.publish({ state: 'failed', error: 'The new service worker became redundant.' });
+          this.followReplacementWorker(registration, installing, activeAtStart, generation);
         }
       });
     });
+  }
+
+  private followReplacementWorker(
+    registration: ServiceWorkerRegistration,
+    redundant: ServiceWorker,
+    activeAtStart: ServiceWorker | null,
+    generation: number,
+  ): void {
+    if (this.redundantWorkerTimer !== null) window.clearTimeout(this.redundantWorkerTimer);
+    // Browsers make a losing candidate redundant during overlapping update
+    // checks and cross-tab races. Give the registration one task window to
+    // expose the winning worker before treating redundancy as an install error.
+    this.redundantWorkerTimer = window.setTimeout(() => {
+      this.redundantWorkerTimer = null;
+      if (generation !== this.updateGeneration) return;
+      const waiting = registration.waiting;
+      if (waiting && waiting !== redundant) {
+        this.onWaiting(waiting);
+        return;
+      }
+      const replacement = registration.installing;
+      if (replacement && replacement !== redundant) {
+        if (replacement.state === 'installed' && navigator.serviceWorker.controller) {
+          this.onWaiting(registration.waiting ?? replacement);
+        } else {
+          this.publish({ state: 'downloading', error: null });
+        }
+        return;
+      }
+      if (registration.active && registration.active !== activeAtStart) {
+        void this.queryBuild(registration.active).then((buildId) => {
+          this.publish({ state: 'current', currentBuild: buildId, availableBuild: null, error: null });
+          this.broadcastCoordination('current', buildId);
+        });
+        return;
+      }
+      this.publish({ state: 'failed', error: 'The new service worker became redundant.' });
+    }, 200);
   }
 
   private onWaiting(worker: ServiceWorker): void {

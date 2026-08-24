@@ -120,7 +120,9 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
   const dockTransition = await page.locator('[data-hf-dock]').evaluate((element) => {
     const root = document.documentElement;
     const previousDisplayMode = root.dataset.hfDisplayMode;
+    const previousKeyboardMotion = root.dataset.hfKeyboardMotion;
     root.dataset.hfDisplayMode = 'standalone';
+    root.dataset.hfKeyboardMotion = 'fallback';
     const style = getComputedStyle(element);
     const result = {
       duration: style.transitionDuration,
@@ -128,10 +130,12 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
     };
     if (previousDisplayMode === undefined) delete root.dataset.hfDisplayMode;
     else root.dataset.hfDisplayMode = previousDisplayMode;
+    if (previousKeyboardMotion === undefined) delete root.dataset.hfKeyboardMotion;
+    else root.dataset.hfKeyboardMotion = previousKeyboardMotion;
     return result;
   });
-  expect(dockTransition.duration).toContain('0.225s');
-  expect(dockTransition.easing).toContain('cubic-bezier(0.42, 0, 1, 1)');
+  expect(dockTransition.duration).toContain('0.205s');
+  expect(dockTransition.easing).toContain('linear');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 

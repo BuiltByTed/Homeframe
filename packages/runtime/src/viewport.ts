@@ -78,6 +78,7 @@ interface EditablePointerTap {
 }
 
 type KeyboardTarget = 'none' | 'content' | 'dock';
+type KeyboardMotion = 'idle' | 'tracking' | 'fallback';
 
 const defaultViewport: HomeframeViewportSnapshot = {
   width: 0,
@@ -144,6 +145,7 @@ export class ViewportController {
   private editablePointerTap: EditablePointerTap | null = null;
   private keyboardAnchor: { scroller: HTMLElement; scrollTop: number } | null = null;
   private keyboardTarget: KeyboardTarget = 'none';
+  private keyboardMotion: KeyboardMotion = 'idle';
   private keyboardCorrectionFrame = 0;
   private keyboardCorrectionTimer = 0;
   private keyboardSettling = false;
@@ -343,6 +345,7 @@ export class ViewportController {
 
     document.addEventListener('focusout', () => {
       queueMicrotask(() => {
+        if (signal.aborted) return;
         this.focusedEditable = isEditableElement(document.activeElement)
           ? document.activeElement
           : null;
@@ -424,6 +427,8 @@ export class ViewportController {
     this.stopKeyboardCorrection();
     this.keyboardAnchor = null;
     this.setKeyboardTarget('none');
+    this.keyboardMotion = 'idle';
+    document.documentElement.dataset.hfKeyboardMotion = this.keyboardMotion;
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
     this.installedFrameInset = 0;
@@ -464,6 +469,8 @@ export class ViewportController {
     this.userOwnsKeyboardScroll = false;
     this.keyboardAnchor = null;
     this.setKeyboardTarget('none');
+    this.keyboardMotion = 'idle';
+    document.documentElement.dataset.hfKeyboardMotion = this.keyboardMotion;
     if (this.snapshot.keyboard.phase === 'closed') return;
     this.snapshot = {
       ...this.snapshot,
@@ -634,6 +641,10 @@ export class ViewportController {
   private correctKeyboardPan(): void {
     this.keyboardCorrectionFrame = 0;
     if (!this.keyboardSettling) return;
+    // WebKit does not guarantee a resize event for every painted keyboard
+    // frame. Poll the live VisualViewport during settlement so the dock can
+    // follow native geometry instead of replaying a guessed CSS animation.
+    this.measure(false);
     if (!this.userOwnsKeyboardScroll && this.keyboardAnchor) {
       this.correctingKeyboardScroll = true;
       this.keyboardAnchor.scroller.scrollTop = this.keyboardAnchor.scrollTop;
@@ -724,14 +735,15 @@ export class ViewportController {
       || this.snapshot.keyboard.phase === 'opening';
     const previousActive = this.snapshot.keyboard.phase !== 'closed';
     const meaningfulVisualReduction = visualKeyboardReduction >= threshold && scale <= 1.01;
+    const movingVisualReduction = visualKeyboardReduction > 1 && scale <= 1.01;
     const inferredOpen = Boolean(this.focusedEditable)
-      && meaningfulVisualReduction;
+      && (meaningfulVisualReduction || (this.keyboardSettling && movingVisualReduction));
     // After blur, WebKit can retain the old visual viewport for several frames.
     // Keep publishing that geometry as `closing` so an avoid dock follows the
     // keyboard instead of falling to the physical bottom prematurely.
     const inferredClosing = !this.focusedEditable
       && previousActive
-      && meaningfulVisualReduction;
+      && movingVisualReduction;
     const hasVirtualKeyboard = virtualKeyboardHeight > 0
       && (Boolean(this.focusedEditable) || previousActive);
     const keyboardHeight = hasVirtualKeyboard
@@ -810,6 +822,15 @@ export class ViewportController {
     const serializedNext = JSON.stringify({ ...candidate, revision: 0 });
     if (!force && serializedPrevious === serializedNext) return;
 
+    const keyboardDelta = Math.abs(candidate.keyboard.height - this.snapshot.keyboard.height);
+    if (keyboardDelta > 0.5) {
+      const geometryDriven = candidate.keyboard.source !== 'none'
+        || this.snapshot.keyboard.source !== 'none';
+      const maximumTrackingStep = Math.max(40, stableHeight * 0.08);
+      this.keyboardMotion = geometryDriven && keyboardDelta <= maximumTrackingStep
+        ? 'tracking'
+        : 'fallback';
+    }
     this.snapshot = { ...candidate, revision: this.snapshot.revision + 1 };
     if (this.snapshot.keyboard.phase === 'closed' && !this.focusedEditable) {
       this.keyboardTarget = 'none';
@@ -855,7 +876,7 @@ export class ViewportController {
     style.setProperty('--hf-safe-left', px(snapshot.safeArea.left));
     style.setProperty(
       '--hf-effective-safe-bottom',
-      snapshot.keyboard.phase === 'closed' ? px(snapshot.safeArea.bottom) : '0px',
+      px(snapshot.safeArea.bottom - snapshot.keyboard.height),
     );
     style.setProperty('--hf-keyboard-height', px(snapshot.keyboard.height));
     style.setProperty(
@@ -872,6 +893,7 @@ export class ViewportController {
     );
     root.dataset.hfKeyboard = snapshot.keyboard.phase;
     root.dataset.hfKeyboardTarget = this.keyboardTarget;
+    root.dataset.hfKeyboardMotion = this.keyboardMotion;
     root.dataset.hfDisplayMode = snapshot.displayMode;
     root.dataset.hfOrientation = snapshot.orientation;
     root.dataset.hfIosStandalone = this.isIosStandalone() ? 'true' : 'false';

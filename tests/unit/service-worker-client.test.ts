@@ -3,6 +3,17 @@ import { HomeframeServiceWorkerClient } from '@homeframe/sw';
 
 class FakeWorker extends EventTarget {
   skipWaitingMessages = 0;
+  state: ServiceWorkerState;
+
+  constructor(state: ServiceWorkerState = 'installed') {
+    super();
+    this.state = state;
+  }
+
+  transition(state: ServiceWorkerState): void {
+    this.state = state;
+    this.dispatchEvent(new Event('statechange'));
+  }
 
   postMessage(message: unknown, transfer?: Transferable[]): void {
     const value = message as { type?: string };
@@ -53,6 +64,61 @@ beforeEach(() => {
 });
 
 describe('HomeframeServiceWorkerClient multi-client coordination', () => {
+  it('follows a replacement worker when an overlapping update makes one candidate redundant', async () => {
+    const active = new FakeWorker('activated');
+    const registration = new FakeRegistration(active);
+    registration.waiting = null;
+    const container = new FakeServiceWorkerContainer(active, registration);
+    Object.defineProperty(navigator, 'serviceWorker', { value: container, configurable: true });
+    const client = new HomeframeServiceWorkerClient({
+      checkOnLaunch: false,
+      mode: 'manual',
+      scope: '/replacement-race/',
+    });
+    await client.start();
+
+    const losing = new FakeWorker('installing');
+    registration.installing = losing;
+    registration.dispatchEvent(new Event('updatefound'));
+    losing.transition('redundant');
+
+    const winner = new FakeWorker('installing');
+    registration.installing = winner;
+    registration.dispatchEvent(new Event('updatefound'));
+    registration.waiting = winner;
+    winner.transition('installed');
+    await delay(260);
+
+    expect(client.getSnapshot().state).toBe('ready');
+    expect(client.getSnapshot().error).toBeNull();
+    client.stop();
+  });
+
+  it('still reports a redundant worker when no replacement wins the update', async () => {
+    const active = new FakeWorker('activated');
+    const registration = new FakeRegistration(active);
+    registration.waiting = null;
+    const container = new FakeServiceWorkerContainer(active, registration);
+    Object.defineProperty(navigator, 'serviceWorker', { value: container, configurable: true });
+    const client = new HomeframeServiceWorkerClient({
+      checkOnLaunch: false,
+      mode: 'manual',
+      scope: '/abandoned-update/',
+    });
+    await client.start();
+
+    const abandoned = new FakeWorker('installing');
+    registration.installing = abandoned;
+    registration.dispatchEvent(new Event('updatefound'));
+    registration.installing = null;
+    abandoned.transition('redundant');
+    await delay(260);
+
+    expect(client.getSnapshot().state).toBe('failed');
+    expect(client.getSnapshot().error).toBe('The new service worker became redundant.');
+    client.stop();
+  });
+
   it('waits for every live client safe point and elects one activation leader', async () => {
     const worker = new FakeWorker();
     const registration = new FakeRegistration(worker);

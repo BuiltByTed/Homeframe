@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ViewportController } from '@homeframe/runtime';
 
 class MockVisualViewport extends EventTarget {
@@ -33,6 +33,27 @@ function mockSafeAreaTop(top: number) {
     });
   });
 }
+
+function mockSafeAreaBottom(bottom: number) {
+  const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+  return vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudoElement) => {
+    const styles = nativeGetComputedStyle(element, pseudoElement);
+    if (!(element instanceof HTMLElement) || element.dataset.hfSafeAreaProbe === undefined) {
+      return styles;
+    }
+    return new Proxy(styles, {
+      get(target, property, receiver) {
+        if (property === 'paddingBottom') return `${bottom}px`;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+  });
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.restoreAllMocks();
+});
 
 describe('ViewportController', () => {
   it('publishes stable viewport geometry and CSS variables before React needs it', async () => {
@@ -423,6 +444,42 @@ describe('ViewportController', () => {
     expect(document.documentElement.dataset.hfKeyboardTarget).toBe('none');
     expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('0px');
     controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+  });
+
+  it('tracks intermediate keyboard geometry directly instead of applying a second easing curve', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const safeArea = mockSafeAreaBottom(34);
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    dock.append(input);
+    document.body.append(dock);
+    controller.start();
+    input.focus();
+    expect(document.activeElement).toBe(input);
+    expect(document.documentElement.dataset.hfKeyboardTarget).toBe('dock');
+
+    viewport.height = 820;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('24px');
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-effective-safe-bottom')).toBe('10px');
+    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
+
+    viewport.height = 780;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('64px');
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-effective-safe-bottom')).toBe('0px');
+    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
+    controller.stop();
+    safeArea.mockRestore();
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
