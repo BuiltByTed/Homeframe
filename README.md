@@ -2,7 +2,7 @@
 
 Homeframe is a React PWA framework for apps that live on the iOS Home Screen. It owns the viewport, safe areas, keyboard geometry, app shell, startup presentation, History API routing, manifest assets, service worker, updates, installation capability, and notification capability while leaving product UI in the application.
 
-**[Open the live kitchen-sink PWA](https://builtbyted.github.io/homeframe/)** to test the framework in Safari, as an iPhone Home Screen app, in desktop Chrome/Safari, or in an installed desktop app window.
+**[Open the live kitchen-sink PWA](https://builtbyted.github.io/Homeframe/)** to test the framework in Safari, as an iPhone Home Screen app, in desktop Chrome/Safari, or in an installed desktop app window.
 
 The same application runs as an installable desktop Chrome PWA. Safari browser mode remains edge-to-edge: page content may extend beneath Safari's chrome while fixed headers, docks, composers, and navigation stay inside the usable visual viewport.
 

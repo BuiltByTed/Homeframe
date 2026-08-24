@@ -993,7 +993,7 @@ function diagnostic(severity: Severity, code: string, messageText: string, remed
     code,
     message: messageText,
     remediation,
-    documentation: `https://github.com/BuiltByTed/homeframe/blob/main/docs/diagnostics.md#diagnostic-catalog`,
+    documentation: `https://github.com/BuiltByTed/Homeframe/blob/main/docs/diagnostics.md#diagnostic-catalog`,
     ...(file ? { file } : {}),
     ...(line ? { line } : {}),
   };
