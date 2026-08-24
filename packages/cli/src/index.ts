@@ -148,6 +148,8 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
   const sourceFiles = await walk(root, (path) => {
     if (path.includes('/node_modules/') || path.includes('/dist/') || path.includes('/.git/')) return false;
+    const relativePath = relative(root, path).replaceAll('\\', '/');
+    if (isTestSourceFile(relativePath)) return false;
     return ['.ts', '.tsx', '.js', '.jsx', '.css', '.html', '.json'].includes(extname(path));
   });
   const registrations: string[] = [];
@@ -170,14 +172,23 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
         lineAt(text, match.index),
       ));
     }
-    for (const match of text.matchAll(/font-size\s*:\s*(?:[0-9]|1[0-5](?:\.[0-9]+)?)px/gi)) {
-      diagnostics.push(warning(
-        'HF_INPUT_ZOOM',
-        `Potential sub-16px text: ${match[0]}.`,
-        'Ensure this rule cannot apply to an editable control, or use a Homeframe input primitive.',
-        relativeFile,
-        lineAt(text, match.index),
-      ));
+    if (extname(file) === '.css') {
+      for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const selector = block[1] ?? '';
+        const declarations = block[2] ?? '';
+        if (!selectorCanMatchEditable(selector)) continue;
+        for (const match of declarations.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)px\b/gi)) {
+          if (Number(match[1]) >= 16) continue;
+          const declarationOffset = block.index + selector.length + 1;
+          diagnostics.push(warning(
+            'HF_INPUT_ZOOM',
+            `Editable selector has sub-16px text: ${match[0]}.`,
+            'Use at least 16px for editable controls, or use a Homeframe input primitive.',
+            relativeFile,
+            lineAt(text, declarationOffset + match.index),
+          ));
+        }
+      }
     }
     if (extname(file) === '.html') {
       for (const [name, pattern] of [
@@ -254,6 +265,16 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
     'Run homeframe init or add a validated configuration manually.',
   ));
   return diagnostics;
+}
+
+function isTestSourceFile(relativePath: string): boolean {
+  return /(?:^|\/)(?:test|tests|e2e|__tests__)(?:\/|$)/i.test(relativePath)
+    || /\.(?:test|spec)\.[^/]+$/i.test(relativePath);
+}
+
+function selectorCanMatchEditable(selector: string): boolean {
+  return /(?:^|[\s>+~,(])(?:input|textarea|select)(?=$|[\s>+~,.#:[\]()])/i.test(selector)
+    || /\[contenteditable(?:\s*\]|\s*[~|^$*]?=)/i.test(selector);
 }
 
 export async function doctorBuild(dist: string): Promise<Diagnostic[]> {

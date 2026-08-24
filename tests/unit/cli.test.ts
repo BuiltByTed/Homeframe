@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { doctorBuild, inventoryProject, program } from '../../packages/cli/src/index.js';
+import { doctorBuild, doctorSource, inventoryProject, program } from '../../packages/cli/src/index.js';
 import { generateServiceWorker } from '@homeframe/sw';
 
 const temporaryDirectories: string[] = [];
@@ -154,6 +154,31 @@ describe('Homeframe adoption inventory and init', () => {
       },
     });
     expect(await readFile(join(root, 'src/service-worker.js'), 'utf8')).toBe(before);
+  });
+});
+
+describe('Homeframe source doctor', () => {
+  it('checks editable controls without treating captions or test fixtures as runtime defects', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      .caption { font-size: 10px; }
+      input, .browser-cache-controls select { font-size: 12px; }
+      textarea { font-size: 16px; }
+    `);
+    await writeFixture(root, 'e2e/viewport.spec.ts', `
+      expect(window.visualViewport?.height).toBeGreaterThan(0);
+      document.body.style.height = '100vh';
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_RAW_VIEWPORT')).toEqual([]);
+    expect(diagnostics.filter((item) => item.code === 'HF_INPUT_ZOOM')).toEqual([
+      expect.objectContaining({
+        file: 'src/styles.css',
+        message: expect.stringContaining('12px'),
+      }),
+    ]);
   });
 });
 
