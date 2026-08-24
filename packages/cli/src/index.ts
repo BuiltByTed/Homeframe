@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, relative, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -141,8 +141,16 @@ program.command('upgrade')
     }, null, 2));
   });
 
-const entryPoint = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
-if (import.meta.url === entryPoint) await program.parseAsync();
+export function isCliEntryPoint(moduleUrl: string, argvPath: string | undefined): boolean {
+  if (!argvPath) return false;
+  try {
+    return realpathSync(fileURLToPath(moduleUrl)) === realpathSync(resolve(argvPath));
+  } catch {
+    return moduleUrl === pathToFileURL(resolve(argvPath)).href;
+  }
+}
+
+if (isCliEntryPoint(import.meta.url, process.argv[1])) await program.parseAsync();
 
 export async function doctorSource(root: string): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
