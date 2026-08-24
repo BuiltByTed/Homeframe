@@ -28,6 +28,7 @@ export interface RouteMatch<T = unknown> {
 
 export interface RouterSnapshot {
   url: URL;
+  state: unknown;
   key: string;
   index: number;
   direction: NavigationDirection;
@@ -179,6 +180,7 @@ export class HomeframeRouter {
     const url = typeof window === 'undefined' ? new URL('http://homeframe.invalid/') : currentUrl();
     this.snapshot = {
       url,
+      state: undefined,
       key: 'server',
       index: 0,
       direction: 'reload',
@@ -223,6 +225,7 @@ export class HomeframeRouter {
     this.snapshot = {
       ...this.snapshot,
       url: currentUrl(),
+      state: entry.userState,
       key: entry.key,
       index: entry.index,
       direction: 'reload',
@@ -242,7 +245,13 @@ export class HomeframeRouter {
         this.managedEntries = [{ url: currentUrl(), state: nextState, entry: fallbackEntry }];
         this.managedPosition = 0;
       }
-      void this.resolve(currentUrl(), next?.key ?? newKey(), nextIndex, direction);
+      void this.resolve(
+        currentUrl(),
+        next?.key ?? newKey(),
+        nextIndex,
+        direction,
+        next?.userState,
+      );
     }, { signal });
 
     window.addEventListener('pageshow', (event) => {
@@ -253,6 +262,7 @@ export class HomeframeRouter {
           pageState.__homeframe?.key ?? this.snapshot.key,
           pageState.__homeframe?.index ?? this.snapshot.index,
           'reload',
+          pageState.__homeframe?.userState,
         );
       }
     }, { signal });
@@ -262,7 +272,7 @@ export class HomeframeRouter {
       void this.navigate(route);
     }, { signal });
 
-    void this.resolve(this.snapshot.url, entry.key, entry.index, 'reload');
+    void this.resolve(this.snapshot.url, entry.key, entry.index, 'reload', entry.userState);
     return () => this.stop();
   }
 
@@ -315,7 +325,13 @@ export class HomeframeRouter {
       }
     } else if (options.replace) history.replaceState(nextState, '', url);
     else history.pushState(nextState, '', url);
-    await this.resolve(url, nextEntry.key, nextEntry.index, options.replace ? 'replace' : 'push');
+    await this.resolve(
+      url,
+      nextEntry.key,
+      nextEntry.index,
+      options.replace ? 'replace' : 'push',
+      nextEntry.userState,
+    );
   }
 
   async prefetch(to: string | URL): Promise<void> {
@@ -359,7 +375,13 @@ export class HomeframeRouter {
     }
     this.managedPosition = position;
     history.replaceState(target.state, '', target.url);
-    await this.resolve(target.url, target.entry.key, target.entry.index, direction);
+    await this.resolve(
+      target.url,
+      target.entry.key,
+      target.entry.index,
+      direction,
+      target.entry.userState,
+    );
   }
 
   private captureManagedSnapshot(): void {
@@ -560,23 +582,24 @@ export class HomeframeRouter {
     key: string,
     index: number,
     direction: NavigationDirection,
+    state: unknown,
   ): Promise<void> {
     const id = ++this.navigationId;
     this.loaderAbort?.abort();
     this.loaderAbort = new AbortController();
     const match = matchRoute(this.routes, url.pathname);
     if (!match) {
-      this.publish({ url, key, index, direction, status: 'not-found', match: null, error: null });
+      this.publish({ url, state, key, index, direction, status: 'not-found', match: null, error: null });
       return;
     }
     const cached = this.dataCache.get(url.href);
     const hasCached = this.dataCache.has(url.href);
     if (hasCached) match.data = cached;
     if (!match.route.loader || hasCached) {
-      this.publish({ url, key, index, direction, status: 'idle', match, error: null });
+      this.publish({ url, state, key, index, direction, status: 'idle', match, error: null });
       return;
     }
-    this.publish({ url, key, index, direction, status: 'loading', match, error: null });
+    this.publish({ url, state, key, index, direction, status: 'loading', match, error: null });
     try {
       const data = await match.route.loader({
         url,
@@ -588,6 +611,7 @@ export class HomeframeRouter {
       this.dataCache.set(url.href, data);
       this.publish({
         url,
+        state,
         key,
         index,
         direction,
@@ -597,7 +621,7 @@ export class HomeframeRouter {
       });
     } catch (error) {
       if (id !== this.navigationId || this.loaderAbort.signal.aborted) return;
-      this.publish({ url, key, index, direction, status: 'error', match, error });
+      this.publish({ url, state, key, index, direction, status: 'error', match, error });
     }
   }
 

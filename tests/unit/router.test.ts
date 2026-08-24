@@ -62,7 +62,7 @@ describe('HomeframeRouter', () => {
     ], { historyMode: 'managed', edgeNavigation: false });
     router.start();
 
-    await router.navigate('/items/1');
+    await router.navigate('/items/1', { state: { galleryItem: 'one' } });
     await router.navigate('/items/2');
     expect(history.length).toBe(nativeLength);
     expect(router.getSnapshot()).toMatchObject({
@@ -74,6 +74,7 @@ describe('HomeframeRouter', () => {
     await Promise.resolve();
     expect(location.pathname).toBe('/items/1');
     expect(router.getSnapshot().direction).toBe('back');
+    expect(router.getSnapshot().state).toEqual({ galleryItem: 'one' });
 
     router.forward();
     await Promise.resolve();
