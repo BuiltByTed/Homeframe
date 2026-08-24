@@ -17,6 +17,14 @@ async function verticalTouchDrag(page: Page, selector: string) {
   await cdp.detach();
 }
 
+async function navigateFromShell(page: Page, name: RegExp) {
+  const desktopNavigation = page.locator('.desktop-sidebar-nav');
+  const navigation = await desktopNavigation.isVisible()
+    ? desktopNavigation
+    : page.locator('.bottom-nav');
+  await navigation.getByRole('link', { name }).click();
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/?e2e=1');
   await expect(page.locator('[data-hf-shell]')).toBeVisible();
@@ -36,7 +44,10 @@ test('paints a contained shell with safe header, scroll root, and bottom dock', 
       viewportPosition: getComputedStyle(document.querySelector('[data-hf-viewport]')!).position,
       rootBackground: getComputedStyle(document.documentElement).backgroundColor,
       bodyPosition: getComputedStyle(document.body).position,
+      headerBackground: getComputedStyle(document.querySelector('[data-hf-header]')!).backgroundColor,
+      topBarBackground: getComputedStyle(document.querySelector('.top-bar')!).backgroundColor,
       dockBackground: getComputedStyle(document.querySelector('[data-hf-dock]')!).backgroundColor,
+      bottomBackground: getComputedStyle(document.querySelector('.bottom-nav')!).backgroundColor,
     };
   });
   expect(layout.windowScrollY).toBe(0);
@@ -45,13 +56,61 @@ test('paints a contained shell with safe header, scroll root, and bottom dock', 
   expect(layout.viewportPosition).toBe('fixed');
   expect(layout.rootBackground).not.toBe('rgba(0, 0, 0, 0)');
   expect(layout.bodyPosition).not.toBe('fixed');
+  expect(layout.headerBackground).toBe(layout.topBarBackground);
   if (await page.evaluate(() => innerWidth < 800)) {
     expect(layout.dockBackground).not.toBe('rgba(0, 0, 0, 0)');
+    expect(layout.dockBackground).toBe(layout.bottomBackground);
   }
 });
 
+test('desktop shell supports an icon rail, a hidden sidebar, pinned actions, and both header spans', async ({ page }) => {
+  if (await page.evaluate(() => innerWidth < 900)) return;
+  const shell = page.locator('[data-hf-shell]');
+  const sidebar = page.locator('[data-hf-sidebar]');
+  const footer = page.locator('[data-hf-sidebar-footer]');
+  await expect(sidebar).toBeVisible();
+  await expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'expanded');
+  await expect(shell).toHaveAttribute('data-hf-header-placement', 'full');
+
+  const expanded = await sidebar.boundingBox();
+  const footerBox = await footer.boundingBox();
+  expect(expanded!.width).toBeGreaterThan(240);
+  expect(Math.abs((footerBox!.y + footerBox!.height) - (expanded!.y + expanded!.height))).toBeLessThanOrEqual(1);
+
+  await page.getByRole('button', { name: 'Icon rail sidebar' }).click();
+  await expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'rail');
+  await expect.poll(async () => (await sidebar.boundingBox())?.width).toBeLessThanOrEqual(73);
+  expect(await page.evaluate(() => localStorage.getItem('homeframe-demo:sidebar-mode'))).toBe('rail');
+
+  await page.getByRole('button', { name: 'Keep header over sidebar only' }).click();
+  await expect(shell).toHaveAttribute('data-hf-header-placement', 'sidebar');
+  const [railBox, headerBox] = await Promise.all([
+    sidebar.boundingBox(),
+    page.locator('[data-hf-header]').boundingBox(),
+  ]);
+  expect(Math.abs(headerBox!.width - railBox!.width)).toBeLessThanOrEqual(1);
+
+  await page.getByRole('button', { name: 'Hidden sidebar' }).click();
+  await expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'hidden');
+  await expect(sidebar).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Show navigation' })).toBeVisible();
+  await page.getByRole('button', { name: 'Show navigation' }).click();
+  await expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'expanded');
+  await expect(sidebar).toBeVisible();
+
+  await page.setViewportSize({ width: 899, height: 720 });
+  await expect(sidebar).toBeHidden();
+  await expect(page.locator('.bottom-nav')).toBeVisible();
+  expect((await page.locator('[data-hf-header]').boundingBox())!.width).toBe(899);
+
+  await page.setViewportSize({ width: 1024, height: 720 });
+  await expect(sidebar).toBeVisible();
+  await expect(page.locator('.bottom-nav')).toBeHidden();
+  await expect.poll(async () => (await sidebar.boundingBox())?.width).toBe(224);
+});
+
 test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for composer', async ({ page }) => {
-  await page.locator('.bottom-nav').getByRole('link', { name: /Keyboard/ }).click();
+  await navigateFromShell(page, /Keyboard/);
   const input = page.getByPlaceholder('Type text');
   await input.click();
   expect(await input.evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
@@ -62,7 +121,7 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
 });
 
 test('a vertical drag beginning on a dock input scrolls content without focusing it', async ({ page }) => {
-  await page.locator('.bottom-nav').getByRole('link', { name: /Keyboard/ }).click();
+  await navigateFromShell(page, /Keyboard/);
   const composer = page.getByPlaceholder('Persistent bottom composer');
   await verticalTouchDrag(page, 'input[placeholder="Persistent bottom composer"]');
   await expect(composer).not.toBeFocused();
@@ -74,7 +133,7 @@ test('a vertical drag beginning on a dock input scrolls content without focusing
 test('route-scoped scroll views restore through real history without reloading the shell', async ({ page }) => {
   await page.evaluate(() => { (window as Window & { __documentToken?: string }).__documentToken = crypto.randomUUID(); });
   const token = await page.evaluate(() => (window as Window & { __documentToken?: string }).__documentToken);
-  await page.locator('.bottom-nav').getByRole('link', { name: /History/ }).click();
+  await navigateFromShell(page, /History/);
   const scroller = page.locator('[data-hf-scroll-view]');
   await scroller.evaluate((element) => {
     element.scrollTop = 900;
@@ -102,7 +161,7 @@ test('route-scoped scroll views restore through real history without reloading t
 test('button navigation starts the destination at the top while history restores it', async ({ page }) => {
   const scroller = page.locator('[data-hf-scroll-view]');
   await scroller.evaluate((element) => { element.scrollTop = 700; });
-  await page.locator('.bottom-nav').getByRole('link', { name: /History/ }).click();
+  await navigateFromShell(page, /History/);
   await expect(page.getByRole('heading', { name: /Scroll, navigate/ })).toBeVisible();
   expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
 
@@ -110,7 +169,7 @@ test('button navigation starts the destination at the top while history restores
     element.scrollTop = 650;
     element.dispatchEvent(new Event('scroll', { bubbles: true }));
   });
-  await page.locator('.bottom-nav').getByRole('link', { name: /PWA/ }).click();
+  await navigateFromShell(page, /PWA/);
   expect(await scroller.evaluate((element) => element.scrollTop)).toBe(0);
   await page.goBack();
   await expect(page.getByRole('heading', { name: /Scroll, navigate/ })).toBeVisible();
@@ -157,14 +216,14 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   expect(worker).toContain('notificationclick');
   expect(html).toContain('html,body{height:100vh;min-height:100vh');
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
-  await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'light dark');
+  await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', /light|dark/);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('light');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
   expect(await page.evaluate(() => window.__HOMEFRAME_BUILD__)).toMatchObject({
     serviceWorkerConfig: { mode: 'automatic', reload: 'safe-point' },
     reactConfig: {
       selection: 'controls-only',
-      snapshot: 'brand',
+      snapshot: 'preserve',
       bottomDock: 'avoid',
       notifications: { transport: { endpoint: '/api/push/subscriptions' } },
     },
@@ -172,25 +231,98 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   });
 });
 
+test('internal links suppress iOS drag previews during route transitions', async ({ page }) => {
+  await navigateFromShell(page, /History/);
+  const link = page.locator('.history-card').first();
+  await expect(link).toHaveAttribute('draggable', 'false');
+  expect(await link.evaluate((element) => {
+    const drag = new DragEvent('dragstart', { bubbles: true, cancelable: true });
+    element.dispatchEvent(drag);
+    return drag.defaultPrevented;
+  })).toBe(true);
+});
+
+test('badge UI reports the count actually sent and clears it', async ({ page }) => {
+  await navigateFromShell(page, /PWA/);
+  await page.evaluate(() => {
+    const calls: Array<number | 'clear'> = [];
+    (window as Window & { __badgeCalls?: Array<number | 'clear'> }).__badgeCalls = calls;
+    Object.defineProperty(navigator, 'setAppBadge', {
+      configurable: true,
+      value: async (count: number) => { calls.push(count); },
+    });
+    Object.defineProperty(navigator, 'clearAppBadge', {
+      configurable: true,
+      value: async () => { calls.push('clear'); },
+    });
+  });
+  const card = page.locator('.capability-card').filter({ hasText: 'App badge' });
+  await card.getByRole('button', { name: 'Set next badge' }).click();
+  await expect(card.locator('code')).toHaveText('1');
+  await expect(card.getByText('Home Screen badge set to 1.')).toBeVisible();
+  await card.getByRole('button', { name: 'Clear app badge' }).click();
+  await expect(card.locator('code')).toHaveText('clear');
+  await expect(card.getByText('Home Screen badge cleared.')).toBeVisible();
+  expect(await page.evaluate(() => (
+    window as Window & { __badgeCalls?: Array<number | 'clear'> }
+  ).__badgeCalls)).toEqual([1, 'clear']);
+});
+
+test('iOS install education points to Safari Add to Home Screen', async ({ page }) => {
+  const isIos = await page.evaluate(() => /iPad|iPhone|iPod/.test(navigator.userAgent));
+  if (!isIos) return;
+  await navigateFromShell(page, /PWA/);
+  const install = page.locator('.capability-card').filter({ hasText: 'Install' });
+  await expect(install.getByText(/Safari.*Share.*Add to Home Screen/)).toBeVisible();
+  await expect(install.getByRole('button', { name: /install/i })).toHaveCount(0);
+});
+
+test('preserve snapshot policy does not reinsert the brand icon on foreground', async ({ page }) => {
+  const splashValues = await page.evaluate(async () => {
+    const values: Array<string | null> = [];
+    const observer = new MutationObserver(() => {
+      values.push(document.documentElement.getAttribute('data-hf-splash-visible'));
+    });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-hf-splash-visible'],
+    });
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    observer.disconnect();
+    return values;
+  });
+  expect(splashValues).not.toContain('brand');
+});
+
 test('settings can force and persist light, dark, or system appearance', async ({ page }) => {
-  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.locator('.icon-button').click();
   const appearance = page.getByRole('combobox', { name: 'Appearance' });
   await expect(appearance).toHaveValue('system');
 
   await appearance.selectOption('dark');
   await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'dark');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark');
-  await expect(page.locator('meta[name="theme-color"][content="#020617"]')).toHaveAttribute('media', 'all');
+  await expect(page.locator('meta[name="theme-color"][content="#0b1429"]')).toHaveAttribute('media', 'all');
 
   await page.reload();
   await expect(appearance).toHaveValue('dark');
   await appearance.selectOption('light');
   await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'light');
-  await expect(page.locator('meta[name="theme-color"][content="#dbeafe"]')).toHaveAttribute('media', 'all');
+  await expect(page.locator('meta[name="theme-color"][content="#e8f0ff"]')).toHaveAttribute('media', 'all');
 
   await appearance.selectOption('system');
   await expect(appearance).toHaveValue('system');
-  await expect(page.locator('meta[name="theme-color"][content="#dbeafe"]')).toHaveAttribute('media', '(prefers-color-scheme: light)');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('meta[name="theme-color"][content="#0b1429"]')).toHaveAttribute('media', 'all');
+  await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'dark');
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('meta[name="theme-color"][content="#e8f0ff"]')).toHaveAttribute('media', 'all');
+  await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'light');
 });
 
 test('deployment headers authorize the per-response bootstrap and never disguise missing assets or APIs as HTML', async ({ request }) => {

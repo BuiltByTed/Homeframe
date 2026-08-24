@@ -4,12 +4,14 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   AppScrollView,
   AppShell,
+  AppSidebarLabel,
   AppViewport,
   HomeframeInput,
   HomeframeNudgeProvider,
   HomeframeProvider,
   HomeframeReadinessProvider,
   SelectableText,
+  useAppSidebar,
   useHomeframeReadiness,
   useHomeframeUpdate,
   useNudgeCoordinator,
@@ -44,6 +46,42 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
     expect(container.querySelector('[data-hf-dock]')).toHaveTextContent('Bottom');
     expect(container.querySelector('[data-hf-portals]')).not.toBeNull();
+  });
+
+  it('supports expanded, icon-rail, and hidden desktop sidebars with a pinned footer', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell
+            header={<div>Header</div>}
+            headerPlacement="full"
+            sidebarStorageKey="test:sidebar-mode"
+            sidebar={<nav><AppSidebarLabel>Dashboard</AppSidebarLabel></nav>}
+            sidebarFooter={<SidebarControls />}
+          >
+            <div>Content</div>
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    const shell = container.querySelector('[data-hf-shell]')!;
+    const sidebar = container.querySelector('[data-hf-sidebar]')!;
+    expect(shell).toHaveAttribute('data-hf-desktop-layout', 'true');
+    expect(shell).toHaveAttribute('data-hf-header-placement', 'full');
+    expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'expanded');
+    expect(sidebar).toHaveTextContent('Dashboard');
+    expect(container.querySelector('[data-hf-sidebar-footer]')).toHaveTextContent('Sidebar controls');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use icon rail' }));
+    expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'rail');
+    expect(localStorage.getItem('test:sidebar-mode')).toBe('rail');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide sidebar' }));
+    expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'hidden');
+    expect(sidebar).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Show navigation' }));
+    expect(shell).toHaveAttribute('data-hf-sidebar-mode', 'expanded');
+    expect(sidebar).not.toHaveAttribute('aria-hidden');
   });
 
   it('enforces editable text sizing and marks intentional selection', () => {
@@ -129,6 +167,39 @@ describe('React shell primitives', () => {
       </AppScrollView>,
     );
     expect(view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop).toBe(640);
+  });
+
+  it('reveals a page field above the measured keyboard occlusion', async () => {
+    const view = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppScrollView><HomeframeInput aria-label="Covered field" /></AppScrollView>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    const viewport = view.container.querySelector<HTMLElement>('[data-hf-viewport]')!;
+    const scroller = view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!;
+    const input = screen.getByLabelText('Covered field');
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({
+      top: 0, right: 390, bottom: 800, left: 0, width: 390, height: 800, x: 0, y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue({
+      top: 80, right: 390, bottom: 740, left: 0, width: 390, height: 660, x: 0, y: 80,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(input, 'getBoundingClientRect').mockReturnValue({
+      top: 610, right: 370, bottom: 650, left: 20, width: 350, height: 40, x: 20, y: 610,
+      toJSON: () => ({}),
+    });
+    const scrollBy = vi.spyOn(scroller, 'scrollBy');
+    document.documentElement.style.setProperty('--hf-keyboard-height', '300px');
+    input.focus();
+    window.dispatchEvent(new CustomEvent('homeframe:viewport-change'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(scrollBy).toHaveBeenCalledWith({ top: 162, behavior: 'smooth' });
+    document.documentElement.style.removeProperty('--hf-keyboard-height');
   });
 
   it('prioritizes only an actually eligible install nudge and releases notifications after permanent dismissal', async () => {
@@ -270,6 +341,17 @@ function NudgeHarness({
       <button onClick={() => nudges.dismiss('install', true)}>Dismiss install permanently</button>
       <button onClick={() => nudges.impression('install')}>Record install impression</button>
       <button onClick={() => onCriticalTask?.(nudges.registerCriticalTask('checkout'))}>Start critical task</button>
+    </div>
+  );
+}
+
+function SidebarControls() {
+  const sidebar = useAppSidebar();
+  return (
+    <div>
+      <span>Sidebar controls</span>
+      <button onClick={() => sidebar.setMode('rail')}>Use icon rail</button>
+      <button onClick={() => sidebar.setMode('hidden')}>Hide sidebar</button>
     </div>
   );
 }

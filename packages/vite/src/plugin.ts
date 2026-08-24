@@ -391,7 +391,7 @@ function criticalCss(config: HomeframeConfig): string {
   // standalone bottom scene inset (WebKit 237961/301108), producing the exact
   // empty strip Homeframe is intended to prevent. The document remains immobile
   // through overflow:hidden while AppViewport owns visual-viewport positioning.
-  return `:root{--hf-app-background:${background};--hf-color-scheme:${cssScheme};background:${background};color-scheme:var(--hf-color-scheme)}html,body,#homeframe-root{width:100%;margin:0;overflow:hidden;background:var(--hf-app-background)}html,body{height:100vh;min-height:100vh;overscroll-behavior:none}#homeframe-root{height:100%}#homeframe-boot-splash{position:fixed;z-index:2147483647;inset:0;min-height:var(--hf-shell-height,100%);display:grid;place-content:center;place-items:center;gap:16px;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);color:CanvasText;background:var(--hf-app-background);font:600 17px/1.2 system-ui,-apple-system,sans-serif;transition:opacity 160ms ease}#homeframe-boot-splash img{width:96px;height:96px;object-fit:contain}:root[data-hf-ready=true]:not([data-hf-splash-visible]) #homeframe-boot-splash{visibility:hidden;opacity:0;pointer-events:none}:root[data-hf-splash-visible] #homeframe-boot-splash{visibility:visible;opacity:1}${adaptiveBackground}@media(prefers-reduced-motion:reduce){#homeframe-boot-splash{transition:none}}`;
+  return `:root{--hf-app-background:${background};--hf-color-scheme:${cssScheme};background:${background};color-scheme:var(--hf-color-scheme)}html,body,#homeframe-root{width:100%;margin:0;overflow:hidden;background:var(--hf-app-background)}html,body{height:100vh;min-height:100vh;overscroll-behavior:none}#homeframe-root{height:100%}#homeframe-boot-splash{position:fixed;z-index:2147483647;inset:0;min-height:var(--hf-shell-height,100%);display:grid;place-content:center;place-items:center;gap:16px;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);color:CanvasText;background:var(--hf-app-background);font:600 17px/1.2 system-ui,-apple-system,sans-serif;transition:opacity 160ms ease}#homeframe-boot-splash img{width:22vmin;height:22vmin;object-fit:contain}:root[data-hf-ready=true]:not([data-hf-splash-visible]) #homeframe-boot-splash{visibility:hidden;opacity:0;pointer-events:none}:root[data-hf-splash-visible] #homeframe-boot-splash{visibility:visible;opacity:1}${adaptiveBackground}@media(prefers-reduced-motion:reduce){#homeframe-boot-splash{transition:none}}`;
 }
 
 function documentColorScheme(config: HomeframeConfig): string {
@@ -403,14 +403,14 @@ function themeColorMetadata(config: HomeframeConfig): string[] {
   const { app } = config;
   const scheme = app.colorScheme ?? 'system';
   if (scheme === 'light') {
-    return [`<meta name="theme-color" content="${app.themeColor}">`];
+    return [`<meta name="theme-color" content="${app.themeColor}" data-hf-theme-color="light">`];
   }
   if (scheme === 'dark') {
-    return [`<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}">`];
+    return [`<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}" data-hf-theme-color="dark">`];
   }
   return [
-    `<meta name="theme-color" content="${app.themeColor}" media="(prefers-color-scheme: light)">`,
-    `<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}" media="(prefers-color-scheme: dark)">`,
+    `<meta name="theme-color" content="${app.themeColor}" media="(prefers-color-scheme: light)" data-hf-theme-color="light">`,
+    `<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}" media="(prefers-color-scheme: dark)" data-hf-theme-color="dark">`,
   ];
 }
 

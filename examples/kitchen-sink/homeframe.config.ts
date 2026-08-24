@@ -16,8 +16,8 @@ export default defineHomeframe({
     startUrl: scope,
     scope,
     display: 'standalone',
-    themeColor: '#dbeafe',
-    themeColorDark: '#020617',
+    themeColor: '#e8f0ff',
+    themeColorDark: '#0b1429',
     // Match the shell surface in every native scene and launch/resume frame.
     backgroundColor: '#e8f0ff',
     backgroundColorDark: '#0b1429',
@@ -41,7 +41,7 @@ export default defineHomeframe({
   },
   viewport: {
     selection: 'controls-only',
-    snapshot: 'brand',
+    snapshot: 'preserve',
     bottomDock: 'avoid',
     strictInputZoom: true,
   },

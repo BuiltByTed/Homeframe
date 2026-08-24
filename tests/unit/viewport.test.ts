@@ -358,7 +358,7 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
-  it('focuses completed taps with preventScroll without focusing during touch-down', () => {
+  it('focuses a completed touch pointer tap once without waiting for a compatibility click', () => {
     installViewport();
     const controller = new ViewportController();
     controller.start();
@@ -374,10 +374,56 @@ describe('ViewportController', () => {
     input.dispatchEvent(pointerDown);
     expect(pointerDown.defaultPrevented).toBe(true);
     expect(focus).not.toHaveBeenCalled();
-    input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    input.dispatchEvent(new PointerEvent('pointerup', {
+      bubbles: true,
+      pointerId: pointerDown.pointerId,
+      pointerType: 'touch',
+    }));
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
     expect(document.activeElement).toBe(input);
     controller.stop();
+  });
+
+  it('raises the dock only for a keyboard session owned by a dock field', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    const pageInput = document.createElement('input');
+    pageInput.style.fontSize = '16px';
+    scroller.append(pageInput);
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    const dockInput = document.createElement('input');
+    dockInput.style.fontSize = '16px';
+    dock.append(dockInput);
+    shell.append(scroller, dock);
+    document.body.append(shell);
+    controller.start();
+
+    dockInput.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(document.documentElement.dataset.hfKeyboardTarget).toBe('dock');
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+
+    pageInput.focus();
+    expect(document.documentElement.dataset.hfKeyboardTarget).toBe('content');
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('0px');
+
+    pageInput.blur();
+    viewport.height = 844;
+    viewport.pageTop = 60;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(document.documentElement.dataset.hfKeyboardTarget).toBe('none');
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('0px');
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
   it('does not overwrite the pre-focus scroll anchor after WebKit moves the scroller', async () => {

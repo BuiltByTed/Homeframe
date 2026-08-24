@@ -108,9 +108,27 @@ Set `app.colorScheme` to `system` (the default), `light`, or `dark`. System mode
 
 The router's default `historyMode: 'auto'` uses ordinary History API entries in Safari, Chrome, and desktop PWAs. Installed iOS/iPadOS web apps use a URL-synchronized managed stack plus left-edge Back and right-edge Forward gestures because WebKit's native snapshot view can fall back to an unpaintable system-white surface. Use `historyMode: 'browser'` to opt back into the native installed gesture, or `historyMode: 'managed'` to exercise the fallback in tests.
 
+### Responsive desktop shell
+
+Passing `sidebar` to `AppShell` enables its desktop grid at 900px while preserving the ordinary header/content/bottom layout below that breakpoint. The sidebar has an independently scrolling main region and a pinned `sidebarFooter`; it can remain expanded, collapse to an icon rail, or hide completely. Set `headerPlacement` to `sidebar`, `content`, or `full` to choose the header span. Wrap text in `AppSidebarLabel` so the framework can visually hide it in rail mode without removing accessible names.
+
+```tsx
+<AppShell
+  header={<Header />}
+  headerPlacement="full"
+  sidebar={<PrimaryNavigation />}
+  sidebarFooter={<AccountAndSidebarControls />}
+  sidebarStorageKey="my-app:sidebar-mode"
+>
+  <AppScrollView>{children}</AppScrollView>
+</AppShell>
+```
+
+Use `useAppSidebar()` inside the sidebar or its footer to read the current `expanded | rail | hidden` mode and call `setMode()` or `cycleMode()`. The controlled `sidebarMode` and `onSidebarModeChange` props are available when layout state belongs in application state. Override `--hf-sidebar-width` and `--hf-sidebar-rail-width` to fit the product; Homeframe narrows both from 900–1099px and hides the desktop sidebar below 900px.
+
 ### Deep links and permalinks
 
-Every in-scope path, query string, and fragment is directly loadable as long as the production server rewrites document routes to the Homeframe entry document. The generated service worker applies the same scoped document fallback offline, and the Pages example ships a matching `404.html` shell.
+Every in-scope path, query string, and fragment is directly loadable as long as the production server rewrites document routes to the Homeframe entry document. The generated service worker applies the same scoped document fallback offline. The Pages example emits physical documents for its known routes so they return 200 immediately, plus a matching `404.html` shell for unknown dynamic routes.
 
 `history.state` remains private to one browser history entry and is not shareable. Put durable view state in the URL instead:
 

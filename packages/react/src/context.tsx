@@ -170,7 +170,11 @@ function LifecyclePresentation({
       return;
     }
     if (lifecycle.phase === 'restoring') {
-      root.dataset.hfSplashVisible = snapshot === 'preserve' ? 'brand' : snapshot;
+      if (snapshot === 'preserve') {
+        delete root.dataset.hfSplashVisible;
+      } else {
+        root.dataset.hfSplashVisible = snapshot;
+      }
       return;
     }
     if (lifecycle.phase === 'visible'

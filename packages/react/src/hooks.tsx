@@ -110,8 +110,14 @@ export function useRevealFocusedControl(options: RevealFocusedControlOptions = {
     if (!scroller) return false;
     const bounds = element.getBoundingClientRect();
     const scrollerBounds = scroller.getBoundingClientRect();
-    if (bounds.bottom > scrollerBounds.bottom - margin) {
-      scroller.scrollBy({ top: bounds.bottom - scrollerBounds.bottom + margin, behavior });
+    const viewport = element.closest<HTMLElement>('[data-hf-viewport]');
+    const viewportBottom = viewport?.getBoundingClientRect().bottom ?? scrollerBounds.bottom;
+    const keyboardHeight = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--hf-keyboard-height'),
+    ) || 0;
+    const visibleBottom = Math.min(scrollerBounds.bottom, viewportBottom - keyboardHeight);
+    if (bounds.bottom > visibleBottom - margin) {
+      scroller.scrollBy({ top: bounds.bottom - visibleBottom + margin, behavior });
     } else if (bounds.top < scrollerBounds.top + margin) {
       scroller.scrollBy({ top: bounds.top - scrollerBounds.top - margin, behavior });
     }

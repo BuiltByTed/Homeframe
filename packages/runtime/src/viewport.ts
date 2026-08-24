@@ -69,6 +69,16 @@ interface EditableScrollDrag {
   dragging: boolean;
 }
 
+interface EditablePointerTap {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  editable: HTMLElement;
+  cancelled: boolean;
+}
+
+type KeyboardTarget = 'none' | 'content' | 'dock';
+
 const defaultViewport: HomeframeViewportSnapshot = {
   width: 0,
   height: 0,
@@ -131,7 +141,9 @@ export class ViewportController {
   private lastCandidate: Omit<HomeframeViewportSnapshot, 'revision'> | null = null;
   private focusedEditable: HTMLElement | null = null;
   private editableScrollDrag: EditableScrollDrag | null = null;
+  private editablePointerTap: EditablePointerTap | null = null;
   private keyboardAnchor: { scroller: HTMLElement; scrollTop: number } | null = null;
+  private keyboardTarget: KeyboardTarget = 'none';
   private keyboardCorrectionFrame = 0;
   private keyboardCorrectionTimer = 0;
   private keyboardSettling = false;
@@ -210,8 +222,37 @@ export class ViewportController {
         || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return;
       this.captureKeyboardAnchor(event.target);
       this.beginKeyboardSettlement();
+      this.editablePointerTap = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        editable: event.target,
+        cancelled: false,
+      };
       event.preventDefault();
     }, { signal, capture: true, passive: false });
+
+    // On iOS a prevented pointerdown can suppress the compatibility click.
+    // Complete the focus transfer on pointerup as well as touchend so a dock
+    // field never needs a second tap, while still cancelling for a real drag.
+    document.addEventListener('pointermove', (event) => {
+      const tap = this.editablePointerTap;
+      if (!tap || tap.pointerId !== event.pointerId) return;
+      if (Math.hypot(event.clientX - tap.startX, event.clientY - tap.startY) > 8) {
+        tap.cancelled = true;
+      }
+    }, { signal, capture: true, passive: true });
+    document.addEventListener('pointerup', (event) => {
+      const tap = this.editablePointerTap;
+      if (!tap || tap.pointerId !== event.pointerId) return;
+      this.editablePointerTap = null;
+      if (!tap.cancelled) this.focusEditable(tap.editable);
+    }, { signal, capture: true });
+    document.addEventListener('pointercancel', (event) => {
+      if (this.editablePointerTap?.pointerId === event.pointerId) {
+        this.editablePointerTap = null;
+      }
+    }, { signal, capture: true });
 
     // Once an inactive editable's native touch action is claimed, explicitly
     // transfer vertical movement to the application scroller. This applies to
@@ -270,20 +311,7 @@ export class ViewportController {
         || !drag.editable.isConnected) return;
       this.captureKeyboardAnchor(drag.editable);
       this.beginKeyboardSettlement();
-      const scrollX = window.scrollX;
-      const scrollY = window.scrollY;
-      drag.editable.focus({ preventScroll: true });
-      if (drag.editable instanceof HTMLInputElement
-        && ['text', 'search', 'tel', 'url', 'password'].includes(drag.editable.type)) {
-        const end = drag.editable.value.length;
-        drag.editable.setSelectionRange(end, end);
-      } else if (drag.editable instanceof HTMLTextAreaElement) {
-        const end = drag.editable.value.length;
-        drag.editable.setSelectionRange(end, end);
-      }
-      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
-        window.scrollTo(scrollX, scrollY);
-      }
+      this.focusEditable(drag.editable);
     };
     document.addEventListener('touchend', finishEditableScrollDrag, { signal, capture: true });
     document.addEventListener('touchcancel', finishEditableScrollDrag, { signal, capture: true });
@@ -294,17 +322,15 @@ export class ViewportController {
     document.addEventListener('click', (event) => {
       if (!isEditableElement(event.target) || document.activeElement === event.target) return;
       this.captureKeyboardAnchor(event.target);
-      const scrollX = window.scrollX;
-      const scrollY = window.scrollY;
-      event.target.focus({ preventScroll: true });
-      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
-        window.scrollTo(scrollX, scrollY);
-      }
+      this.focusEditable(event.target);
     }, { signal, capture: true });
 
     document.addEventListener('focusin', (event) => {
       if (!isEditableElement(event.target)) return;
       this.focusedEditable = event.target;
+      const keyboardTarget = event.target.closest('[data-hf-dock]') ? 'dock' : 'content';
+      this.setKeyboardTarget(keyboardTarget);
+      if (keyboardTarget === 'content') this.keyboardAnchor = null;
       // A pointer/click guard captures the pre-focus position. WebKit may move
       // the internal scroller synchronously during focus even with
       // `preventScroll`; never replace that good anchor with the moved value.
@@ -320,6 +346,11 @@ export class ViewportController {
         this.focusedEditable = isEditableElement(document.activeElement)
           ? document.activeElement
           : null;
+        if (this.focusedEditable) {
+          this.setKeyboardTarget(this.focusedEditable.closest('[data-hf-dock]') ? 'dock' : 'content');
+        } else if (this.snapshot.keyboard.phase === 'closed') {
+          this.setKeyboardTarget('none');
+        }
         this.beginKeyboardSettlement();
         this.scheduleSettle();
       });
@@ -389,8 +420,10 @@ export class ViewportController {
     this.safeAreaProbe?.remove();
     this.safeAreaProbe = null;
     this.editableScrollDrag = null;
+    this.editablePointerTap = null;
     this.stopKeyboardCorrection();
     this.keyboardAnchor = null;
+    this.setKeyboardTarget('none');
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
     this.installedFrameInset = 0;
@@ -430,6 +463,7 @@ export class ViewportController {
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
     this.keyboardAnchor = null;
+    this.setKeyboardTarget('none');
     if (this.snapshot.keyboard.phase === 'closed') return;
     this.snapshot = {
       ...this.snapshot,
@@ -523,6 +557,12 @@ export class ViewportController {
   }
 
   private captureKeyboardAnchor(element: HTMLElement): void {
+    // Dock controls should not move the route underneath them. Page controls,
+    // however, must be allowed to scroll above the keyboard as it opens.
+    if (!element.closest('[data-hf-dock]')) {
+      this.keyboardAnchor = null;
+      return;
+    }
     const scroller = this.primaryScroller(element);
     if (!scroller) return;
     this.keyboardAnchor = { scroller, scrollTop: scroller.scrollTop };
@@ -531,6 +571,43 @@ export class ViewportController {
   private rememberKeyboardScroll(): void {
     if (!this.keyboardAnchor) return;
     this.keyboardAnchor.scrollTop = this.keyboardAnchor.scroller.scrollTop;
+  }
+
+  private setKeyboardTarget(target: KeyboardTarget): void {
+    this.keyboardTarget = target;
+    const root = document.documentElement;
+    root.dataset.hfKeyboardTarget = target;
+    getHomeframeRootStyle().setProperty(
+      '--hf-dock-keyboard-offset',
+      target === 'dock' ? `${Math.max(0, this.snapshot.keyboard.height)}px` : '0px',
+    );
+  }
+
+  private focusEditable(element: HTMLElement): void {
+    if (!element.isConnected || document.activeElement === element) return;
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const pageScroller = element.closest('[data-hf-dock]')
+      ? null
+      : this.primaryScroller(element);
+    const pageScrollTop = pageScroller?.scrollTop ?? 0;
+    element.focus({ preventScroll: true });
+    if (element instanceof HTMLInputElement
+      && ['text', 'search', 'tel', 'url', 'password'].includes(element.type)) {
+      const end = element.value.length;
+      element.setSelectionRange(end, end);
+    } else if (element instanceof HTMLTextAreaElement) {
+      const end = element.value.length;
+      element.setSelectionRange(end, end);
+    }
+    // Undo WebKit's synchronous internal focus pan. AppScrollView performs the
+    // intentional reveal later, once real keyboard geometry is available.
+    if (pageScroller && pageScroller.scrollTop !== pageScrollTop) {
+      pageScroller.scrollTop = pageScrollTop;
+    }
+    if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+      window.scrollTo(scrollX, scrollY);
+    }
   }
 
   private beginKeyboardSettlement(): void {
@@ -563,7 +640,10 @@ export class ViewportController {
       this.correctingKeyboardScroll = false;
     }
     if ((window.visualViewport?.scale ?? 1) <= 1.01) window.scrollTo(0, 0);
-    getHomeframeRootStyle().setProperty('--hf-layout-viewport-top', `${this.readPageTop()}px`);
+    getHomeframeRootStyle().setProperty(
+      '--hf-layout-viewport-top',
+      `${this.snapshot.keyboard.phase === 'closed' ? 0 : this.readPageTop()}px`,
+    );
     this.keyboardCorrectionFrame = requestAnimationFrame(() => this.correctKeyboardPan());
   }
 
@@ -731,6 +811,9 @@ export class ViewportController {
     if (!force && serializedPrevious === serializedNext) return;
 
     this.snapshot = { ...candidate, revision: this.snapshot.revision + 1 };
+    if (this.snapshot.keyboard.phase === 'closed' && !this.focusedEditable) {
+      this.keyboardTarget = 'none';
+    }
     this.writeCss(this.snapshot);
     for (const listener of this.listeners) listener();
     emitRuntimeEvent('viewport-change', this.snapshot);
@@ -744,7 +827,10 @@ export class ViewportController {
     style.setProperty('--hf-viewport-height', px(snapshot.height));
     style.setProperty('--hf-viewport-x', px(snapshot.x));
     style.setProperty('--hf-viewport-y', px(snapshot.y));
-    style.setProperty('--hf-layout-viewport-top', px(this.isIosStandalone() ? snapshot.pageTop : 0));
+    style.setProperty(
+      '--hf-layout-viewport-top',
+      px(this.isIosStandalone() && snapshot.keyboard.phase !== 'closed' ? snapshot.pageTop : 0),
+    );
     const visualRight = snapshot.x + snapshot.width;
     const visualBottom = snapshot.y + snapshot.height;
     // Installed apps keep one immutable shell rectangle for their entire
@@ -773,6 +859,10 @@ export class ViewportController {
     );
     style.setProperty('--hf-keyboard-height', px(snapshot.keyboard.height));
     style.setProperty(
+      '--hf-dock-keyboard-offset',
+      this.keyboardTarget === 'dock' ? px(snapshot.keyboard.height) : '0px',
+    );
+    style.setProperty(
       '--hf-input-min-font-size',
       px(this.options.inputZoomMinimumPx / Math.min(Math.max(snapshot.scale, 0.1), 1)),
     );
@@ -781,6 +871,7 @@ export class ViewportController {
       snapshot.keyboard.phase === 'closed' ? '0' : '1',
     );
     root.dataset.hfKeyboard = snapshot.keyboard.phase;
+    root.dataset.hfKeyboardTarget = this.keyboardTarget;
     root.dataset.hfDisplayMode = snapshot.displayMode;
     root.dataset.hfOrientation = snapshot.orientation;
     root.dataset.hfIosStandalone = this.isIosStandalone() ? 'true' : 'false';

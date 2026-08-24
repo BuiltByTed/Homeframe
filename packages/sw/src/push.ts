@@ -58,5 +58,12 @@ export async function setAppBadge(count?: number): Promise<boolean> {
     await badgeNavigator.clearAppBadge();
     return true;
   }
+  // Some WebKit builds expose setAppBadge before clearAppBadge. Setting zero
+  // is the Badging API's equivalent clear operation and keeps those versions
+  // from leaving an old Home Screen count behind.
+  if (badgeNavigator.setAppBadge) {
+    await badgeNavigator.setAppBadge(0);
+    return true;
+  }
   return false;
 }

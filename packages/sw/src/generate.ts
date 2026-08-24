@@ -530,6 +530,8 @@ self.addEventListener('message', (event) => {
       event.waitUntil(self.navigator.setAppBadge(message.count));
     } else if ('clearAppBadge' in self.navigator) {
       event.waitUntil(self.navigator.clearAppBadge());
+    } else if ('setAppBadge' in self.navigator) {
+      event.waitUntil(self.navigator.setAppBadge(0));
     }
   }
 });
@@ -641,6 +643,7 @@ if (HF.notifications) {
         const count = Math.max(0, data.badgeCount);
         if (count > 0 && 'setAppBadge' in self.navigator) await self.navigator.setAppBadge(count);
         else if ('clearAppBadge' in self.navigator) await self.navigator.clearAppBadge();
+        else if ('setAppBadge' in self.navigator) await self.navigator.setAppBadge(0);
       }
       await self.registration.showNotification(title, options);
     })());

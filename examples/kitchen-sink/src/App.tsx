@@ -11,6 +11,7 @@ import { getHomeframeRootStyle } from '@homeframe/runtime';
 import {
   AppScrollView,
   AppShell,
+  AppSidebarLabel,
   AppViewport,
   HomeframeDiagnostics,
   HomeframeErrorBoundary,
@@ -24,6 +25,7 @@ import {
   NoCallout,
   SelectableText,
   useAppBadge,
+  useAppSidebar,
   useAppLifecycle,
   useDisplayMode,
   useHomeframeUpdate,
@@ -32,6 +34,7 @@ import {
   useNotificationCapability,
   useStateCheckpoint,
   useViewport,
+  type AppHeaderPlacement,
 } from '@homeframe/react';
 import {
   HomeframeRouterProvider,
@@ -129,19 +132,24 @@ function ThemePreferenceProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const root = document.documentElement;
     const runtimeStyle = getHomeframeRootStyle();
+    const themeColors = { light: '#e8f0ff', dark: '#0b1429' } as const;
     root.dataset.hfDemoTheme = resolved;
     runtimeStyle.setProperty('--hf-color-scheme', `only ${resolved}`);
-    runtimeStyle.setProperty('--hf-app-background', resolved === 'dark' ? '#0b1429' : '#e8f0ff');
-    const themes = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
-    const light = themes.find((meta) => meta.content.toLowerCase() === '#dbeafe');
-    const dark = themes.find((meta) => meta.content.toLowerCase() === '#020617');
+    runtimeStyle.setProperty('--hf-app-background', themeColors[resolved]);
+    const scheme = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (scheme) scheme.content = `only ${resolved}`;
+    const light = document.querySelector<HTMLMetaElement>('meta[data-hf-theme-color="light"]');
+    const dark = document.querySelector<HTMLMetaElement>('meta[data-hf-theme-color="dark"]');
     if (light && dark) {
-      light.media = preference === 'system' ? '(prefers-color-scheme: light)'
-        : preference === 'light' ? 'all' : 'not all';
-      dark.media = preference === 'system' ? '(prefers-color-scheme: dark)'
-        : preference === 'dark' ? 'all' : 'not all';
+      // iOS does not reliably repaint standalone status-bar chrome when only a
+      // media query changes. Mutating the active meta on every resolved system
+      // appearance change makes the safe-area surface update immediately.
+      light.media = resolved === 'light' ? 'all' : 'not all';
+      dark.media = resolved === 'dark' ? 'all' : 'not all';
+      light.content = themeColors.light;
+      dark.content = themeColors.dark;
     }
-  }, [preference, resolved]);
+  }, [resolved]);
 
   const value = useMemo(() => ({ preference, resolved, setPreference }), [preference, resolved, setPreference]);
   return <ThemePreferenceContext.Provider value={value}>{children}</ThemePreferenceContext.Provider>;
@@ -156,10 +164,30 @@ function useThemePreference() {
 function ApplicationShell() {
   const route = useRouterSnapshot();
   const { scrollKey, direction, permalinkScroll } = useRouteScrollRestoration();
+  const [headerPlacement, setHeaderPlacement] = useStateCheckpoint<AppHeaderPlacement>({
+    key: 'desktop-header-placement',
+    storage: 'local',
+    initialValue: 'full',
+    deserialize: (value) => {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed === 'sidebar' || parsed === 'content' || parsed === 'full'
+        ? parsed
+        : 'full';
+    },
+  });
   return (
     <AppViewport className="app-viewport">
       <AppShell
         header={<Header />}
+        headerPlacement={headerPlacement}
+        sidebar={<DesktopSidebar />}
+        sidebarFooter={(
+          <DesktopSidebarFooter
+            headerPlacement={headerPlacement}
+            setHeaderPlacement={setHeaderPlacement}
+          />
+        )}
+        sidebarStorageKey="homeframe-demo:sidebar-mode"
         bottom={<ShellBottom routeId={route.match?.route.id} />}
       >
         <HomeframeOfflineBoundary offline={<OfflinePage />}>
@@ -206,6 +234,76 @@ function BottomNav() {
       <NavLink to={appPath('/history')}><span>⇄</span>History</NavLink>
       <NavLink to={appPath('/pwa')}><span>◉</span>PWA</NavLink>
     </nav>
+  );
+}
+
+const desktopNavigation = [
+  { to: appPath(), icon: '⌂', label: 'Home' },
+  { to: appPath('/keyboard'), icon: '⌨', label: 'Keyboard' },
+  { to: appPath('/history'), icon: '⇄', label: 'History' },
+  { to: appPath('/pwa'), icon: '◉', label: 'PWA' },
+];
+
+function DesktopSidebar() {
+  return (
+    <nav className="desktop-sidebar-nav" aria-label="Desktop primary navigation">
+      {desktopNavigation.map((item) => (
+        <NavLink key={item.to} to={item.to} title={item.label}>
+          <span className="desktop-sidebar-icon" aria-hidden="true">{item.icon}</span>
+          <AppSidebarLabel>{item.label}</AppSidebarLabel>
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+function DesktopSidebarFooter({
+  headerPlacement,
+  setHeaderPlacement,
+}: {
+  headerPlacement: AppHeaderPlacement;
+  setHeaderPlacement: (placement: AppHeaderPlacement) => void;
+}) {
+  const sidebar = useAppSidebar();
+  const headerIsFull = headerPlacement === 'full';
+  return (
+    <div className="desktop-sidebar-footer">
+      <Link to={appPath('/settings')} className="desktop-sidebar-utility" title="Settings">
+        <span className="desktop-sidebar-icon" aria-hidden="true">⚙</span>
+        <AppSidebarLabel>Settings</AppSidebarLabel>
+      </Link>
+      <div className="desktop-sidebar-modes" role="group" aria-label="Sidebar display">
+        {([
+          ['expanded', '▤', 'Expanded'],
+          ['rail', '⋮', 'Icon rail'],
+          ['hidden', '←', 'Hidden'],
+        ] as const).map(([mode, icon, label]) => (
+          <button
+            key={mode}
+            type="button"
+            className="desktop-sidebar-control"
+            aria-label={`${label} sidebar`}
+            aria-pressed={sidebar.mode === mode}
+            title={`${label} sidebar`}
+            onClick={() => sidebar.setMode(mode)}
+          >
+            <span className="desktop-sidebar-icon" aria-hidden="true">{icon}</span>
+            <AppSidebarLabel>{label}</AppSidebarLabel>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="desktop-sidebar-control desktop-header-control"
+        aria-label={headerIsFull ? 'Keep header over sidebar only' : 'Stretch header across window'}
+        aria-pressed={headerIsFull}
+        title={headerIsFull ? 'Header: full width' : 'Header: sidebar only'}
+        onClick={() => setHeaderPlacement(headerIsFull ? 'sidebar' : 'full')}
+      >
+        <span className="desktop-sidebar-icon" aria-hidden="true">↔</span>
+        <AppSidebarLabel>{headerIsFull ? 'Full-width header' : 'Sidebar header'}</AppSidebarLabel>
+      </button>
+    </div>
   );
 }
 
@@ -415,20 +513,69 @@ function PwaPage() {
   const notifications = useNotificationCapability();
   const update = useHomeframeUpdate();
   const setBadge = useAppBadge();
-  const [badgeCount, setBadgeCount] = useState(1);
+  const [badgeCount, setBadgeCount] = useStateCheckpoint({
+    key: 'app-badge-count',
+    storage: 'local',
+    initialValue: 0,
+    deserialize: (value) => {
+      const parsed = Number(JSON.parse(value));
+      return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+    },
+  });
+  const [notificationResult, setNotificationResult] = useState('');
+  const [badgeResult, setBadgeResult] = useState('');
   const [pushResult, setPushResult] = useState('');
   const sendLocalNotification = async () => {
-    const permission = Notification.permission === 'default'
-      ? await Notification.requestPermission()
-      : Notification.permission;
-    if (permission !== 'granted') return;
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification('Homeframe local test', {
-      body: 'Tap to return to the PWA lab.',
-      icon: appPath('/generated/notification-icon.png'),
-      badge: appPath('/generated/notification-badge.png'),
-      data: { route: appPath('/pwa') },
-    });
+    setNotificationResult('Preparing test notification…');
+    if (typeof Notification === 'undefined') {
+      setNotificationResult('This browser does not expose notifications. On iPhone, install from Safari first and open the Home Screen app.');
+      return;
+    }
+    if (install.platformHint === 'ios' && !install.installed) {
+      setNotificationResult('iPhone notifications are available only after Safari Share → Add to Home Screen, then launching the installed app.');
+      return;
+    }
+    try {
+      const permission = Notification.permission === 'default'
+        ? await Notification.requestPermission()
+        : Notification.permission;
+      if (permission !== 'granted') {
+        setNotificationResult(`Notification permission is ${permission}. Enable it in system settings to run this test.`);
+        return;
+      }
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification('Homeframe local test', {
+          body: 'Tap to return to the PWA lab.',
+          icon: appPath('/generated/notification-icon.png'),
+          badge: appPath('/generated/notification-badge.png'),
+          data: { route: appPath('/pwa') },
+        });
+      } else {
+        new Notification('Homeframe local test', {
+          body: 'The no-backend notification path is working.',
+          icon: appPath('/generated/notification-icon.png'),
+        });
+      }
+      setNotificationResult('Test notification sent locally. No push backend was used.');
+    } catch (reason) {
+      setNotificationResult(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+  const applyBadge = async (nextCount?: number) => {
+    setBadgeResult(nextCount ? `Setting badge to ${nextCount}…` : 'Clearing badge…');
+    try {
+      const applied = await setBadge(nextCount);
+      if (!applied) {
+        setBadgeResult('The Badging API is unavailable in this browser. On iPhone, test from the installed Home Screen app.');
+        return;
+      }
+      const appliedCount = nextCount ?? 0;
+      setBadgeCount(appliedCount);
+      setBadgeResult(appliedCount > 0 ? `Home Screen badge set to ${appliedCount}.` : 'Home Screen badge cleared.');
+    } catch (reason) {
+      setBadgeResult(reason instanceof Error ? reason.message : String(reason));
+    }
   };
   const sendWebPush = async () => {
     setPushResult('Sending…');
@@ -457,18 +604,26 @@ function PwaPage() {
   return (
     <Page eyebrow="Capability lab" title="Install, notify, badge, update, recover">
       <CapabilityCard title="Install" state={install.state} blockers={install.blockers}>
-        <button disabled={install.installed} onClick={() => void install.prompt()}>{install.installed ? 'Installed' : 'Install or show steps'}</button>
+        {install.installed ? <p>Running as an installed app.</p>
+          : install.platformHint === 'ios' ? (
+            <p>In Safari, tap Share, choose <strong>Add to Home Screen</strong>, confirm, then launch Homeframe from its new icon.</p>
+          ) : (
+            <button onClick={() => void install.prompt()}>Open install prompt</button>
+          )}
       </CapabilityCard>
       <CapabilityCard title="Notifications" state={notifications.state} blockers={notifications.blockers}>
-        <button onClick={() => void notifications.requestAndSubscribe()}>Enable push</button>
-        <button onClick={() => void sendLocalNotification()}>Send local test</button>
-        <button disabled={!staticDemo && notifications.state !== 'subscribed'} onClick={() => void sendWebPush()}>{staticDemo ? 'About server push' : 'Send real web push'}</button>
+        <button onClick={() => void sendLocalNotification()}>Send no-backend test</button>
+        {!staticDemo && <button onClick={() => void notifications.requestAndSubscribe()}>Enable push</button>}
+        {!staticDemo && <button disabled={notifications.state !== 'subscribed'} onClick={() => void sendWebPush()}>Send real web push</button>}
+        {staticDemo && <p>The hosted demo can send a local test notification; end-to-end remote push is available from the included demo server.</p>}
+        {notificationResult && <SelectableText as="p">{notificationResult}</SelectableText>}
         {pushResult && <SelectableText as="p">{pushResult}</SelectableText>}
         {notifications.error && <SelectableText as="p" className="error-text">{notifications.error}</SelectableText>}
       </CapabilityCard>
-      <CapabilityCard title="App badge" state={`${badgeCount}`} blockers={[]}>
-        <button onClick={() => { void setBadge(badgeCount); setBadgeCount((value) => value + 1); }}>Set & increment</button>
-        <button onClick={() => void setBadge()}>Clear</button>
+      <CapabilityCard title="App badge" state={badgeCount > 0 ? `${badgeCount}` : 'clear'} blockers={[]}>
+        <button onClick={() => void applyBadge(badgeCount + 1)}>Set next badge</button>
+        <button onClick={() => void applyBadge()}>Clear app badge</button>
+        {badgeResult && <SelectableText as="p">{badgeResult}</SelectableText>}
       </CapabilityCard>
       <CapabilityCard title="Bundle update" state={update.state} blockers={update.error ? [update.error] : []}>
         <button onClick={() => void update.check()}>Check</button>
@@ -512,13 +667,14 @@ function CapabilityNudges() {
     if (notifications.eligible) notifications.recordImpression();
   }, [notifications.eligible]);
   if (install.eligible) {
-    const instructions = install.platformHint === 'ios'
-      ? 'Use Share, then Add to Home Screen for the full iPhone PWA experience.'
+    const manualInstall = install.platformHint === 'ios';
+    const instructions = manualInstall
+      ? 'In Safari, tap Share, choose Add to Home Screen, confirm, then launch the new icon.'
       : 'Install it in its own app window with offline support.';
     return (
       <div className="nudge" role="region" aria-label="Install Homeframe">
         <div><strong>Install Homeframe as an app</strong><span>{instructions}</span></div>
-        <button onClick={() => void install.prompt()}>Continue</button>
+        <button onClick={() => manualInstall ? install.snooze(7) : void install.prompt()}>{manualInstall ? 'Got it' : 'Install'}</button>
         <button className="quiet" aria-label="Dismiss" onClick={() => install.snooze(1)}>×</button>
       </div>
     );

@@ -1,10 +1,15 @@
 import {
+  createContext,
   createElement,
   forwardRef,
+  useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
   type ElementType,
   type HTMLAttributes,
@@ -42,6 +47,60 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   bottom?: ReactNode;
   headerSafeArea?: boolean;
   bottomKeyboard?: DockKeyboardPolicy;
+  /** Enables the responsive desktop grid when provided. */
+  sidebar?: ReactNode;
+  /** Pinned action/account region at the bottom of the desktop sidebar. */
+  sidebarFooter?: ReactNode;
+  sidebarLabel?: string;
+  sidebarMode?: AppSidebarMode;
+  defaultSidebarMode?: AppSidebarMode;
+  onSidebarModeChange?: (mode: AppSidebarMode) => void;
+  /** Optional localStorage key for an uncontrolled sidebar mode. */
+  sidebarStorageKey?: string;
+  headerPlacement?: AppHeaderPlacement;
+  /** Replaces the default menu button shown when the sidebar is fully hidden. */
+  sidebarReveal?: ReactNode;
+}
+
+export type AppSidebarMode = 'expanded' | 'rail' | 'hidden';
+export type AppHeaderPlacement = 'sidebar' | 'content' | 'full';
+
+export interface AppSidebarController {
+  mode: AppSidebarMode;
+  setMode(mode: AppSidebarMode): void;
+  cycleMode(): void;
+}
+
+const AppSidebarContext = createContext<AppSidebarController | null>(null);
+
+export function useAppSidebar(): AppSidebarController {
+  return useContext(AppSidebarContext) ?? {
+    mode: 'hidden',
+    setMode: () => undefined,
+    cycleMode: () => undefined,
+  };
+}
+
+export function AppSidebarLabel<T extends ElementType = 'span'>({
+  as,
+  ...props
+}: PolymorphicProps<T>) {
+  return createElement(as ?? 'span', { ...props, 'data-hf-sidebar-label': '' });
+}
+
+function readStoredSidebarMode(
+  storageKey: string | undefined,
+  fallback: AppSidebarMode,
+): AppSidebarMode {
+  if (!storageKey || typeof window === 'undefined') return fallback;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    return stored === 'expanded' || stored === 'rail' || stored === 'hidden'
+      ? stored
+      : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 export function AppShell({
@@ -51,18 +110,71 @@ export function AppShell({
   bottom,
   headerSafeArea = true,
   bottomKeyboard,
+  sidebar,
+  sidebarFooter,
+  sidebarLabel = 'Primary navigation',
+  sidebarMode,
+  defaultSidebarMode = 'expanded',
+  onSidebarModeChange,
+  sidebarStorageKey,
+  headerPlacement = 'full',
+  sidebarReveal,
   children,
   ...props
 }: AppShellProps) {
   const { config } = useHomeframe();
   const dockPolicy = bottomKeyboard ?? config.bottomDock ?? 'avoid';
-  return createElement(
+  const [uncontrolledMode, setUncontrolledMode] = useState(() =>
+    readStoredSidebarMode(sidebarStorageKey, defaultSidebarMode));
+  const mode = sidebarMode ?? uncontrolledMode;
+  const setMode = useCallback((next: AppSidebarMode) => {
+    if (sidebarMode === undefined) setUncontrolledMode(next);
+    if (sidebarStorageKey) {
+      try { localStorage.setItem(sidebarStorageKey, next); }
+      catch { /* Storage is optional; the live state remains usable. */ }
+    }
+    onSidebarModeChange?.(next);
+  }, [onSidebarModeChange, sidebarMode, sidebarStorageKey]);
+  const sidebarController = useMemo<AppSidebarController>(() => ({
+    mode,
+    setMode,
+    cycleMode: () => setMode(mode === 'expanded' ? 'rail' : mode === 'rail' ? 'hidden' : 'expanded'),
+  }), [mode, setMode]);
+  const desktopLayout = sidebar != null;
+  const shell = createElement(
     as,
-    { ...props, 'data-hf-shell': '' },
-    header == null ? <div /> : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>,
+    {
+      ...props,
+      'data-hf-shell': '',
+      'data-hf-desktop-layout': desktopLayout || undefined,
+      'data-hf-sidebar-mode': desktopLayout ? mode : undefined,
+      'data-hf-header-placement': desktopLayout ? headerPlacement : undefined,
+    },
+    header == null && !desktopLayout
+      ? <div />
+      : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>,
+    desktopLayout ? (
+      <aside
+        data-hf-sidebar=""
+        aria-label={sidebarLabel}
+        aria-hidden={mode === 'hidden' || undefined}
+        inert={mode === 'hidden' || undefined}
+      >
+        <div data-hf-sidebar-content="">{sidebar}</div>
+        {sidebarFooter == null ? null : <div data-hf-sidebar-footer="">{sidebarFooter}</div>}
+      </aside>
+    ) : null,
     createElement(contentAs, { 'data-hf-content': '' }, children),
-    bottom == null ? <div /> : <ViewportDock keyboard={dockPolicy}>{bottom}</ViewportDock>,
+    bottom == null
+      ? desktopLayout ? null : <div />
+      : <ViewportDock keyboard={dockPolicy}>{bottom}</ViewportDock>,
+    desktopLayout && mode === 'hidden'
+      ? <div data-hf-sidebar-reveal="">{sidebarReveal ?? (
+          <button type="button" onClick={() => setMode('expanded')} aria-label="Show navigation">☰</button>
+        )}</div>
+      : null,
   );
+  return <AppSidebarContext.Provider value={sidebarController}>{shell}</AppSidebarContext.Provider>;
 }
 
 function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLElement | null> {
@@ -288,9 +400,15 @@ function revealInside(scroller: HTMLElement | null, element: Element): void {
   if (!scroller || !scroller.contains(element)) return;
   const bounds = element.getBoundingClientRect();
   const scrollerBounds = scroller.getBoundingClientRect();
+  const viewport = element.closest<HTMLElement>('[data-hf-viewport]');
+  const viewportBottom = viewport?.getBoundingClientRect().bottom ?? scrollerBounds.bottom;
+  const keyboardHeight = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue('--hf-keyboard-height'),
+  ) || 0;
+  const visibleBottom = Math.min(scrollerBounds.bottom, viewportBottom - keyboardHeight);
   const margin = 12;
-  if (bounds.bottom > scrollerBounds.bottom - margin) {
-    scroller.scrollBy({ top: bounds.bottom - scrollerBounds.bottom + margin, behavior: 'smooth' });
+  if (bounds.bottom > visibleBottom - margin) {
+    scroller.scrollBy({ top: bounds.bottom - visibleBottom + margin, behavior: 'smooth' });
   } else if (bounds.top < scrollerBounds.top + margin) {
     scroller.scrollBy({ top: bounds.top - scrollerBounds.top - margin, behavior: 'smooth' });
   }

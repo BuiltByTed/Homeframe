@@ -122,8 +122,10 @@ export function Link({
   state,
   prefetch = 'intent',
   onClick,
+  onDragStart,
   onPointerEnter,
   onFocus,
+  draggable = false,
   ...props
 }: LinkProps) {
   const router = useHomeframeRouter();
@@ -137,6 +139,11 @@ export function Link({
       href={typeof location === 'undefined' || href.origin === location.origin
         ? href.pathname + href.search + href.hash
         : href.href}
+      draggable={draggable}
+      onDragStart={(event) => {
+        onDragStart?.(event);
+        if (!event.defaultPrevented && !draggable) event.preventDefault();
+      }}
       onPointerEnter={(event) => {
         onPointerEnter?.(event);
         if (!event.defaultPrevented) maybePrefetch();

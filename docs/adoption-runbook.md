@@ -90,6 +90,7 @@ Map existing UI as follows:
 | fixed top application bar | `AppHeader` or `AppShell.header` |
 | route/page scrolling | `AppScrollView` |
 | bottom navigation | `ViewportDock keyboard="avoid"` |
+| responsive desktop navigation | `AppShell.sidebar`, `AppShell.sidebarFooter`, and `useAppSidebar()` |
 | focused search/chat composer | `ViewportDock keyboard="avoid"` or `KeyboardDock` |
 | overlay/modal portal | `HomeframePortal` |
 | editable controls | `HomeframeInput`, `HomeframeTextarea`, `HomeframeSelect`, or an audited equivalent |
