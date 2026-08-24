@@ -190,6 +190,37 @@ final class HomeframeSimulatorUITests: XCTestCase {
     }
 
     @MainActor
+    func testSafariBrowserModeKeepsInteractiveControlsClearOfBrowserChrome() throws {
+        let host = XCUIApplication()
+        host.launchEnvironment["HOMEFRAME_TEST_URL"] = ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]
+            ?? "http://127.0.0.1:4180/"
+        host.launch()
+        let openButton = host.buttons["open-homeframe-in-safari"]
+        XCTAssertTrue(openButton.waitForExistence(timeout: 10))
+        openButton.tap()
+
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+        let header = safari.staticTexts["Homeframe"]
+        let main = safari.otherElements["main"]
+        let bottomLink = safari.links
+            .matching(NSPredicate(format: "label CONTAINS 'PWA'"))
+            .firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        XCTAssertTrue(main.waitForExistence(timeout: 15))
+        XCTAssertTrue(bottomLink.waitForExistence(timeout: 15))
+
+        let window = safari.windows.firstMatch.frame
+        XCTAssertGreaterThan(header.frame.minY, window.minY)
+        XCTAssertLessThan(bottomLink.frame.maxY, window.maxY - 8)
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "Homeframe iPhone Safari"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     private func launchHomeframe() throws -> XCUIApplication {
         XCUIApplication(bundleIdentifier: "com.apple.webapp").terminate()
         XCUIDevice.shared.press(.home)

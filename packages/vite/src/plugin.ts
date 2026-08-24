@@ -2,9 +2,13 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import type { IndexHtmlTransformContext, Plugin, ResolvedConfig } from 'vite';
-import { generateServiceWorker, type PrecacheEntry } from '@homeframe/sw';
+import {
+  generateServiceWorker,
+  type PrecacheEntry,
+  type SerializableRuntimeCacheRule,
+} from '@homeframe/sw';
 import { generateAssets, joinBase, type GeneratedAssetSet } from './assets.js';
-import { createManifest, validateConfig } from './manifest.js';
+import { createManifest, runtimeCacheOverlapWarnings, validateConfig } from './manifest.js';
 import type {
   GeneratedHomeframeAsset,
   HomeframeConfig,
@@ -33,6 +37,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
     },
     configResolved(resolved) {
       vite = resolved;
+      for (const warning of runtimeCacheOverlapWarnings(config)) this.warn(warning);
       buildId = process.env.HOMEFRAME_BUILD_ID
         ?? `${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${hash(JSON.stringify(config)).slice(0, 8)}`;
       assetsPromise = generateAssets(config, vite.root, vite.base);
@@ -42,16 +47,8 @@ export function homeframe(config: HomeframeConfig): Plugin {
     },
     load(id) {
       if (id !== resolvedVirtualConfigId) return undefined;
-      return `export default ${JSON.stringify({
-        app: config.app,
-        buildId,
-        serviceWorker: config.serviceWorker === false ? false : {
-          url: joinBase(vite.base, config.serviceWorker?.fileName ?? 'sw.js'),
-          scope: config.app.scope,
-          mode: config.serviceWorker?.update?.mode ?? 'automatic',
-          reload: config.serviceWorker?.update?.reload ?? 'safe-point',
-        },
-      })};`;
+      const workerConfig = config.serviceWorker === false ? undefined : config.serviceWorker;
+      return `export default ${JSON.stringify(clientConfiguration(config, vite.base, workerConfig, buildId))};`;
     },
     async buildStart() {
       generated = await assetsPromise!;
@@ -73,16 +70,17 @@ export function homeframe(config: HomeframeConfig): Plugin {
       ensureNoConflictingMetadata(html);
       const nonce = config.security?.cspNonce;
       const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
-      const serviceWorkerUrl = config.serviceWorker === false
+      const serviceWorkerUrl = config.serviceWorker === false || config.serviceWorker?.enabled === false
         ? null
         : joinBase(vite.base, config.serviceWorker?.fileName ?? 'sw.js');
       const critical = criticalCss(config);
       const boot = bootScript({
         appId: config.app.id,
         buildId,
-        backgroundColor: config.app.backgroundColor,
+        backgroundColor: effectiveBackground(config),
         serviceWorkerUrl,
         serviceWorkerScope: config.app.scope,
+        client: clientConfiguration(config, vite.base, config.serviceWorker === false ? undefined : config.serviceWorker, buildId),
       });
       const startupLinks = generated.startupLinks.map(({ href, media }) =>
         `<link rel="apple-touch-startup-image" href="${escapeHtml(href)}" media="${escapeHtml(media)}">`).join('\n');
@@ -98,6 +96,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
         `<link rel="apple-touch-icon" href="${joinBase(vite.base, 'generated/apple-touch-icon.png')}">`,
         `<link rel="icon" type="image/png" sizes="32x32" href="${joinBase(vite.base, 'generated/favicon-32.png')}">`,
         startupLinks,
+        `<style id="homeframe-runtime-vars"${nonceAttribute}>:root{}</style>`,
         `<style id="homeframe-critical"${nonceAttribute}>${critical}</style>`,
         `<script id="homeframe-bootstrap"${nonceAttribute}>${boot}</script>`,
       ].filter(Boolean).join('\n');
@@ -127,10 +126,19 @@ export function homeframe(config: HomeframeConfig): Plugin {
       });
     },
     async writeBundle() {
-      if (config.serviceWorker === false || config.serviceWorker?.enabled === false) return;
       const outDir = isAbsolute(vite.build.outDir)
         ? vite.build.outDir
         : resolve(vite.root, vite.build.outDir);
+      if (config.serviceWorker === false || config.serviceWorker?.enabled === false) {
+        await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
+          appId: config.app.id,
+          buildId,
+          generatedAt: new Date().toISOString(),
+          serviceWorker: null,
+          precacheEntries: 0,
+        }, null, 2)}\n`);
+        return;
+      }
       const swFile = config.serviceWorker?.fileName ?? 'sw.js';
       const swConfig = config.serviceWorker;
       const precache = await collectPrecache(outDir, swFile, config, swConfig, vite.base);
@@ -140,12 +148,15 @@ export function homeframe(config: HomeframeConfig): Plugin {
         scope: config.app.scope,
         documentFallback: swConfig?.documentFallback ?? config.app.startUrl,
         precache,
+        ...(swConfig?.cacheRevisionSalt ? { revisionSalt: swConfig.cacheRevisionSalt } : {}),
         ...(swConfig?.navigationAllow ? { navigationAllow: swConfig.navigationAllow } : {}),
         ...(swConfig?.navigationDeny ? { navigationDeny: swConfig.navigationDeny } : {}),
         ...(swConfig?.navigationTimeoutSeconds === undefined ? {} : {
           navigationTimeoutSeconds: swConfig.navigationTimeoutSeconds,
         }),
-        ...(swConfig?.runtimeCaching ? { runtimeCaching: swConfig.runtimeCaching } : {}),
+        ...(swConfig?.runtimeCaching ? {
+          runtimeCaching: serializeRuntimeCaching(swConfig.runtimeCaching),
+        } : {}),
         ...(swConfig?.cleanupOutdated === undefined ? {} : {
           cleanupOutdated: swConfig.cleanupOutdated,
         }),
@@ -161,9 +172,123 @@ export function homeframe(config: HomeframeConfig): Plugin {
         generatedAt: new Date().toISOString(),
         serviceWorker: joinBase(vite.base, swFile),
         precacheEntries: precache.length,
+        documentRevision: precache.find((entry) => entry.url === (swConfig?.documentFallback ?? config.app.startUrl))?.revision ?? null,
       }, null, 2)}\n`);
     },
   };
+}
+
+function clientConfiguration(
+  config: HomeframeConfig,
+  base: string,
+  workerConfig: HomeframeServiceWorkerBuildConfig | undefined,
+  currentBuildId: string,
+) {
+  const workerEnabled = config.serviceWorker !== false && workerConfig?.enabled !== false;
+  return {
+    app: config.app,
+    buildId: currentBuildId,
+    react: {
+      selection: config.viewport?.selection ?? 'controls-only',
+      snapshot: config.viewport?.snapshot ?? 'brand',
+      bottomDock: config.viewport?.bottomDock ?? 'avoid',
+      diagnostics: config.diagnostics ?? {},
+      viewport: {
+        ...(config.viewport?.keyboardThresholdPx === undefined ? {} : { keyboardThresholdPx: config.viewport.keyboardThresholdPx }),
+        ...(config.viewport?.keyboardThresholdRatio === undefined ? {} : { keyboardThresholdRatio: config.viewport.keyboardThresholdRatio }),
+        ...(config.viewport?.inputZoomMinimumPx === undefined ? {} : { inputZoomMinimumPx: config.viewport.inputZoomMinimumPx }),
+        ...(config.viewport?.strictInputZoom === undefined ? {} : { strictInputZoom: config.viewport.strictInputZoom }),
+        ...(config.viewport?.settleDelaysMs === undefined ? {} : { settleDelaysMs: config.viewport.settleDelaysMs }),
+      },
+      ...(config.nudges ? { nudges: config.nudges } : {}),
+      notifications: workerConfig?.notifications ? {
+        ...(workerConfig.notifications.applicationServerKey ? { applicationServerKey: workerConfig.notifications.applicationServerKey } : {}),
+        ...(workerConfig.notifications.subscriptionTransport ? {
+          transport: { endpoint: workerConfig.notifications.subscriptionTransport },
+        } : {}),
+      } : false,
+    },
+    router: { scope: config.app.scope, ...(config.router ?? {}) },
+    serviceWorker: workerEnabled ? {
+      url: joinBase(base, workerConfig?.fileName ?? 'sw.js'),
+      scope: config.app.scope,
+      mode: workerConfig?.update?.mode ?? 'automatic',
+      reload: workerConfig?.update?.reload ?? 'safe-point',
+      ...(workerConfig?.update?.checkOnLaunch === undefined ? {} : { checkOnLaunch: workerConfig.update.checkOnLaunch }),
+      ...(workerConfig?.update?.checkOnForeground === undefined ? {} : { checkOnForeground: workerConfig.update.checkOnForeground }),
+      ...(workerConfig?.update?.foregroundMinimumAgeMs === undefined ? {} : { foregroundMinimumAgeMs: workerConfig.update.foregroundMinimumAgeMs }),
+      ...(workerConfig?.update?.intervalMinutes === undefined ? {} : { intervalMinutes: workerConfig.update.intervalMinutes }),
+      ...(workerConfig?.update?.reloadOnActivate === undefined ? {} : { reloadOnActivate: workerConfig.update.reloadOnActivate }),
+    } : false,
+  };
+}
+
+function effectiveBackground(config: HomeframeConfig): string {
+  return config.app.colorScheme === 'dark'
+    ? config.app.backgroundColorDark ?? config.app.backgroundColor
+    : config.app.backgroundColor;
+}
+
+function serializeRuntimeCaching(
+  rules: NonNullable<HomeframeServiceWorkerBuildConfig['runtimeCaching']>,
+): SerializableRuntimeCacheRule[] {
+  return rules.map((rule) => {
+    const {
+      match: configuredMatch,
+      matchType: configuredMatchType,
+      sensitiveData: configuredSensitiveData,
+      ...sharedRule
+    } = rule;
+    let match: string;
+    let matchType: SerializableRuntimeCacheRule['matchType'];
+    let matchFlags: string | undefined;
+    let matchFunctionSource: string | undefined;
+    if (configuredMatch instanceof RegExp) {
+      match = configuredMatch.source;
+      matchType = 'regex';
+      matchFlags = configuredMatch.flags;
+    } else if (typeof configuredMatch === 'function') {
+      match = '[configured matcher]';
+      matchType = 'function';
+      matchFunctionSource = trustedFunctionSource(configuredMatch, 'runtime cache matcher');
+    } else {
+      match = configuredMatch;
+      matchType = configuredMatchType;
+    }
+    const sensitiveData = configuredSensitiveData && configuredSensitiveData !== 'none'
+      ? {
+          partitionKeySource: trustedFunctionSource(
+            configuredSensitiveData.partitionKey,
+            'private-cache partitionKey',
+          ),
+          purgeOnLogout: true as const,
+          threatReview: configuredSensitiveData.threatReview,
+        }
+      : configuredSensitiveData;
+    return {
+      ...sharedRule,
+      match,
+      ...(matchType ? { matchType } : {}),
+      ...(matchFlags ? { matchFlags } : {}),
+      ...(matchFunctionSource ? { matchFunctionSource } : {}),
+      ...(sensitiveData ? { sensitiveData } : {}),
+    };
+  });
+}
+
+function trustedFunctionSource(value: Function, label: string): string {
+  const source = value.toString().trim();
+  if (!source || source.includes('[native code]') || source.length > 16_384) {
+    throw new Error(`Invalid ${label}: provide a self-contained function smaller than 16 KiB.`);
+  }
+  try {
+    // This runs only in the trusted Node build process. The emitted worker uses
+    // a static function expression and never requires unsafe-eval at runtime.
+    void new Function(`return (${source});`);
+  } catch (reason) {
+    throw new Error(`Invalid ${label}: ${reason instanceof Error ? reason.message : String(reason)}`);
+  }
+  return source;
 }
 
 async function collectPrecache(
@@ -183,7 +308,12 @@ async function collectPrecache(
     if (exclude.some((pattern) => pattern.test(relativeFile))) continue;
     if (include.length > 0 && !include.some((pattern) => pattern.test(relativeFile))) continue;
     const details = await stat(file);
-    if (details.size > maximum) continue;
+    if (details.size > maximum) {
+      if (/\.(?:html|js|css|woff2?)$/i.test(relativeFile)) {
+        throw new Error(`Required shell asset ${relativeFile} is ${details.size} bytes, exceeding serviceWorker.precache.maximumFileSizeBytes (${maximum}). Increase the explicit bound or reduce the asset; Homeframe will not publish a partial offline shell.`);
+      }
+      continue;
+    }
     const contents = await readFile(file);
     const revision = hash(Buffer.concat([
       contents,
@@ -283,8 +413,19 @@ function bootScript(info: {
   backgroundColor: string;
   serviceWorkerUrl: string | null;
   serviceWorkerScope: string;
+  client: ReturnType<typeof clientConfiguration>;
 }): string {
-  return `(function(){var d=document.documentElement,v=window.visualViewport,ms=window.matchMedia;window.__HOMEFRAME_BUILD__=${JSON.stringify(info)};d.dataset.hfReady='false';d.dataset.hfKeyboard='closed';d.dataset.hfDisplayMode=ms&&ms('(display-mode: fullscreen)').matches?'fullscreen':ms&&ms('(display-mode: standalone)').matches?'standalone':ms&&ms('(display-mode: minimal-ui)').matches?'minimal-ui':navigator.standalone===true?'standalone':'browser';function m(){if(d.dataset.hfReady==='true')return;var w=v?v.width:window.innerWidth,h=v?v.height:window.innerHeight,x=v?v.offsetLeft:0,y=v?v.offsetTop:0,z=v?v.scale:1,s=d.style;s.setProperty('--hf-viewport-width',w+'px');s.setProperty('--hf-viewport-height',h+'px');s.setProperty('--hf-viewport-x',x+'px');s.setProperty('--hf-viewport-y',y+'px');s.setProperty('--hf-shell-width',(x+w)+'px');s.setProperty('--hf-shell-height',(y+h)+'px');s.setProperty('--hf-stable-width',window.innerWidth+'px');s.setProperty('--hf-stable-height',window.innerHeight+'px');s.setProperty('--hf-input-min-font-size',(16/Math.min(Math.max(z,.1),1))+'px')}m();v&&v.addEventListener('resize',m,{passive:true});v&&v.addEventListener('scroll',m,{passive:true});window.addEventListener('resize',m,{passive:true})})()`;
+  const buildInfo = {
+    appId: info.appId,
+    buildId: info.buildId,
+    backgroundColor: info.backgroundColor,
+    serviceWorkerUrl: info.serviceWorkerUrl,
+    serviceWorkerScope: info.serviceWorkerScope,
+    serviceWorkerConfig: info.client.serviceWorker,
+    reactConfig: info.client.react,
+    routerConfig: info.client.router,
+  };
+  return `(function(){var d=document.documentElement,v=window.visualViewport,ms=window.matchMedia,r=document.getElementById('homeframe-runtime-vars'),s;try{s=r.sheet.cssRules[0].style}catch(e){s=d.style}window.__HOMEFRAME_BUILD__=${JSON.stringify(buildInfo)};d.dataset.hfReady='false';d.dataset.hfKeyboard='closed';d.dataset.hfDisplayMode=ms&&ms('(display-mode: fullscreen)').matches?'fullscreen':ms&&ms('(display-mode: standalone)').matches?'standalone':ms&&ms('(display-mode: minimal-ui)').matches?'minimal-ui':navigator.standalone===true?'standalone':'browser';function m(){if(d.dataset.hfReady==='true')return;var w=v?v.width:window.innerWidth,h=v?v.height:window.innerHeight,x=v?v.offsetLeft:0,y=v?v.offsetTop:0,z=v?v.scale:1;s.setProperty('--hf-viewport-width',w+'px');s.setProperty('--hf-viewport-height',h+'px');s.setProperty('--hf-viewport-x',x+'px');s.setProperty('--hf-viewport-y',y+'px');s.setProperty('--hf-shell-width',(x+w)+'px');s.setProperty('--hf-shell-height',(y+h)+'px');s.setProperty('--hf-stable-width',window.innerWidth+'px');s.setProperty('--hf-stable-height',window.innerHeight+'px');s.setProperty('--hf-input-min-font-size',(16/Math.min(Math.max(z,.1),1))+'px')}m();v&&v.addEventListener('resize',m,{passive:true});v&&v.addEventListener('scroll',m,{passive:true});window.addEventListener('resize',m,{passive:true})})()`;
 }
 
 function escapeHtml(value: string): string {

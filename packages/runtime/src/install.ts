@@ -30,6 +30,14 @@ export interface InstallSnapshot {
   revision: number;
 }
 
+const installServerSnapshot: InstallSnapshot = {
+  state: 'checking',
+  platformHint: 'other',
+  instructions: null,
+  installed: false,
+  revision: 0,
+};
+
 function isIosLike(): boolean {
   if (typeof navigator === 'undefined') return false;
   const touchMac = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
@@ -48,16 +56,10 @@ export class InstallController {
   private deferredPrompt: BeforeInstallPromptEvent | null = null;
   private listeners = new Set<() => void>();
   private abortController: AbortController | null = null;
-  private snapshot: InstallSnapshot = {
-    state: 'checking',
-    platformHint: 'other',
-    instructions: null,
-    installed: false,
-    revision: 0,
-  };
+  private snapshot: InstallSnapshot = installServerSnapshot;
 
   getSnapshot = (): InstallSnapshot => this.snapshot;
-  getServerSnapshot = (): InstallSnapshot => this.snapshot;
+  getServerSnapshot = (): InstallSnapshot => installServerSnapshot;
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -92,13 +94,20 @@ export class InstallController {
   }
 
   async prompt(): Promise<'accepted' | 'dismissed' | 'instructions-required'> {
-    if (this.snapshot.state === 'manual-instructions') return 'instructions-required';
-    if (!this.deferredPrompt) return 'dismissed';
+    if (this.snapshot.state === 'manual-instructions') {
+      emitRuntimeEvent('install-outcome', { outcome: 'instructions-required', platformHint: this.snapshot.platformHint });
+      return 'instructions-required';
+    }
+    if (!this.deferredPrompt) {
+      emitRuntimeEvent('install-outcome', { outcome: 'dismissed', platformHint: this.snapshot.platformHint, reason: 'prompt-unavailable' });
+      return 'dismissed';
+    }
     const promptEvent = this.deferredPrompt;
     this.deferredPrompt = null;
     await promptEvent.prompt();
     const choice = await promptEvent.userChoice;
     this.recompute();
+    emitRuntimeEvent('install-outcome', { outcome: choice.outcome, platformHint: this.snapshot.platformHint });
     return choice.outcome;
   }
 

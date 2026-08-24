@@ -136,7 +136,7 @@ Use `Link` for semantic navigation and `navigate()` for app buttons. Do not call
 
 For a URL-only modal or sheet update, pass `{ replace: true, preventScrollReset: true }` to `navigate`. The router marks that transition as `scrollBehavior: 'preserve'`; ordinary pushes and replaces continue to reset to the top.
 
-Configure the origin server to rewrite known in-scope document routes to `index.html`. Exclude APIs, asset-like paths, the worker, and recovery endpoints. Test direct loading while online before enabling offline fallback.
+Configure the origin server to rewrite known in-scope document routes, including `/__homeframe/recovery`, to `index.html`. Exclude APIs, asset-like paths, and the worker. The recovery route remains network-first in the generated worker and can fall back to the validated shell offline. Test direct loading while online before enabling offline fallback.
 
 If retaining React Router or another router, write a small adapter that supplies a stable history-entry key and navigation direction to `AppScrollView`. Preserve real anchors. On an installed iOS/iPadOS web app, either adopt Homeframe's managed-history adapter or explicitly accept the native WebKit snapshot fallback; a dark document alone cannot recolor that OS-owned transition surface.
 

@@ -14,7 +14,11 @@ import {
   getViewportController,
   type HomeframeViewportSnapshot,
 } from '@homeframe/runtime';
-import { setAppBadge } from '@homeframe/sw';
+import {
+  createHttpPushSubscriptionTransport,
+  setAppBadge,
+  type PushSubscriptionTransport,
+} from '@homeframe/sw';
 import { useHomeframe } from './context.js';
 
 export function useViewport(): HomeframeViewportSnapshot {
@@ -39,7 +43,7 @@ export function useAppLifecycle() {
   return useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getServerSnapshot);
 }
 
-export function useHomeframeUpdate() {
+export function useServiceWorker() {
   const { serviceWorker } = useHomeframe();
   const empty = useMemo(() => ({
     state: 'unsupported' as const,
@@ -47,6 +51,7 @@ export function useHomeframeUpdate() {
     availableBuild: null,
     error: null,
     registration: null,
+    guardCount: 0,
     revision: 0,
   }), []);
   const snapshot = useSyncExternalStore(
@@ -54,6 +59,11 @@ export function useHomeframeUpdate() {
     serviceWorker?.getSnapshot ?? (() => empty),
     serviceWorker?.getServerSnapshot ?? (() => empty),
   );
+  return { ...snapshot, client: serviceWorker };
+}
+
+export function useHomeframeUpdate() {
+  const { client: serviceWorker, ...snapshot } = useServiceWorker();
   return {
     ...snapshot,
     check: () => serviceWorker?.check() ?? Promise.resolve(),
@@ -62,11 +72,93 @@ export function useHomeframeUpdate() {
     registerGuard: (guard: () => boolean | Promise<boolean>) =>
       serviceWorker?.registerGuard(guard) ?? (() => undefined),
     purgeRuntimeCache: (name: string) => serviceWorker?.purgeRuntimeCache(name) ?? Promise.resolve(),
+    purgePrivateCaches: () => serviceWorker?.purgePrivateCaches() ?? Promise.resolve(),
   };
+}
+
+export interface RevealFocusedControlOptions {
+  margin?: number;
+  behavior?: ScrollBehavior;
+}
+
+export function useRevealFocusedControl(options: RevealFocusedControlOptions = {}) {
+  const { margin = 12, behavior = 'smooth' } = options;
+  return useCallback((element: Element | null = document.activeElement) => {
+    if (!(element instanceof Element)) return false;
+    const scroller = element.closest<HTMLElement>('[data-hf-scroll-view]');
+    if (!scroller) return false;
+    const bounds = element.getBoundingClientRect();
+    const scrollerBounds = scroller.getBoundingClientRect();
+    if (bounds.bottom > scrollerBounds.bottom - margin) {
+      scroller.scrollBy({ top: bounds.bottom - scrollerBounds.bottom + margin, behavior });
+    } else if (bounds.top < scrollerBounds.top + margin) {
+      scroller.scrollBy({ top: bounds.top - scrollerBounds.top - margin, behavior });
+    }
+    return true;
+  }, [behavior, margin]);
 }
 
 export function useAppBadge() {
   return useCallback((count?: number) => setAppBadge(count), []);
+}
+
+export interface HomeframeLogoutOptions {
+  privateCaches?: boolean;
+  notificationSubscription?: boolean;
+  checkpoints?: boolean;
+}
+
+/**
+ * Clears only Homeframe/app-authorized state. It never clears unrelated origin
+ * storage, caches, cookies, or browser data.
+ */
+export function useHomeframeLogout() {
+  const { serviceWorker, config } = useHomeframe();
+  return useCallback(async (options: HomeframeLogoutOptions = {}) => {
+    const {
+      privateCaches = true,
+      notificationSubscription = true,
+      checkpoints = true,
+    } = options;
+    const failures: unknown[] = [];
+    if (privateCaches) {
+      try { await serviceWorker?.purgePrivateCaches(); }
+      catch (reason) { failures.push(reason); }
+    }
+    if (notificationSubscription && 'serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        const subscription = await registration.pushManager?.getSubscription();
+        if (subscription) {
+          const notificationConfig = config.notifications;
+          let transport: PushSubscriptionTransport | null = null;
+          if (notificationConfig && notificationConfig.transport) {
+            transport = 'upsert' in notificationConfig.transport
+              ? notificationConfig.transport
+              : createHttpPushSubscriptionTransport(notificationConfig.transport);
+          }
+          try { await transport?.remove(subscription.endpoint); }
+          catch (reason) { failures.push(reason); }
+          try { await subscription.unsubscribe(); }
+          catch (reason) { failures.push(reason); }
+        }
+      } catch (reason) { failures.push(reason); }
+    }
+    if (checkpoints) clearHomeframeCheckpoints();
+    if (failures.length) throw new AggregateError(failures, 'Homeframe logout cleanup was incomplete.');
+  }, [config.notifications, serviceWorker]);
+}
+
+export function clearHomeframeCheckpoints(): void {
+  if (typeof window === 'undefined') return;
+  for (const storage of [localStorage, sessionStorage]) {
+    const keys: string[] = [];
+    for (let index = 0; index < storage.length; index += 1) {
+      const key = storage.key(index);
+      if (key?.startsWith('hf:checkpoint:')) keys.push(key);
+    }
+    for (const key of keys) storage.removeItem(key);
+  }
 }
 
 export function useOnlineStatus(): boolean {
@@ -84,20 +176,20 @@ export function useOnlineStatus(): boolean {
 }
 
 export const HomeframeInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  function HomeframeInput({ style, ...props }, ref) {
-    return <input {...props} ref={ref} style={{ fontSize: 'max(var(--hf-input-min-font-size, 16px), 1rem)', ...style }} />;
+  function HomeframeInput(props, ref) {
+    return <input {...props} ref={ref} data-hf-input="" />;
   },
 );
 
 export const HomeframeTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function HomeframeTextarea({ style, ...props }, ref) {
-    return <textarea {...props} ref={ref} style={{ fontSize: 'max(var(--hf-input-min-font-size, 16px), 1rem)', ...style }} />;
+  function HomeframeTextarea(props, ref) {
+    return <textarea {...props} ref={ref} data-hf-input="" />;
   },
 );
 
 export const HomeframeSelect = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  function HomeframeSelect({ style, ...props }, ref) {
-    return <select {...props} ref={ref} style={{ fontSize: 'max(var(--hf-input-min-font-size, 16px), 1rem)', ...style }} />;
+  function HomeframeSelect(props, ref) {
+    return <select {...props} ref={ref} data-hf-input="" />;
   },
 );
 

@@ -95,6 +95,41 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'dark');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+  expect(await page.evaluate(() => window.__HOMEFRAME_BUILD__)).toMatchObject({
+    serviceWorkerConfig: { mode: 'automatic', reload: 'safe-point' },
+    reactConfig: {
+      selection: 'controls-only',
+      snapshot: 'brand',
+      bottomDock: 'avoid',
+      notifications: { transport: { endpoint: '/api/push/subscriptions' } },
+    },
+    routerConfig: { historyMode: 'auto' },
+  });
+});
+
+test('deployment headers authorize the per-response bootstrap and never disguise missing assets or APIs as HTML', async ({ request }) => {
+  const document = await request.get('/');
+  const html = await document.text();
+  const nonce = /<script[^>]+id="homeframe-bootstrap"[^>]+nonce="([^"]+)"/.exec(html)?.[1];
+  expect(nonce).toBeTruthy();
+  expect(document.headers()['content-security-policy']).toContain(`'nonce-${nonce}'`);
+  expect(document.headers()['content-security-policy']).toContain("style-src-attr 'none'");
+  expect(document.headers()['content-security-policy']).not.toContain("'unsafe-inline'");
+  expect(html).toContain(`id="homeframe-runtime-vars" nonce="${nonce}"`);
+  expect(html).toContain(`id="homeframe-critical" nonce="${nonce}"`);
+  expect(document.headers()['x-content-type-options']).toBe('nosniff');
+
+  const missingAsset = await request.get('/assets/definitely-missing.js');
+  expect(missingAsset.status()).toBe(404);
+  expect(missingAsset.headers()['content-type']).not.toContain('text/html');
+
+  const missingApi = await request.get('/api/definitely-missing');
+  expect(missingApi.status()).toBe(404);
+  expect(missingApi.headers()['content-type']).toContain('application/json');
+
+  const traversal = await request.get('/%2e%2e%2f%2e%2e%2fetc/passwd');
+  expect([400, 403, 404]).toContain(traversal.status());
+  expect(traversal.headers()['content-type']).not.toContain('text/html');
 });
 
 test('serves the app shell for a deep route while offline after installation', async ({ page, context }) => {
@@ -109,6 +144,17 @@ test('serves the app shell for a deep route while offline after installation', a
   await page.goto('/history/8');
   await expect(page.getByRole('heading', { name: 'History destination 8' })).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test('keeps the framework recovery route usable online and from the validated offline shell', async ({ page, context }) => {
+  await page.goto('/__homeframe/recovery');
+  await expect(page.getByRole('heading', { name: 'Homeframe recovery' })).toBeVisible();
+  await expect(page.getByText('Current build')).toBeVisible();
+  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+  await page.reload();
+  await context.setOffline(true);
+  await page.goto('/__homeframe/recovery');
+  await expect(page.getByRole('heading', { name: 'Homeframe recovery' })).toBeVisible();
 });
 
 test('default selection policy suppresses UI text but keeps declared copy targets selectable', async ({ page }) => {

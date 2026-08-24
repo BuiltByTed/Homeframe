@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { createManifest, defineHomeframe, validateConfig } from '@homeframe/vite';
+import {
+  createManifest,
+  defineHomeframe,
+  runtimeCacheOverlapWarnings,
+  validateConfig,
+} from '@homeframe/vite';
 
 const config = defineHomeframe({
   app: {
@@ -59,5 +64,91 @@ describe('manifest generation', () => {
       ...config,
       app: { ...config.app, colorScheme: 'sepia' },
     } as never)).toThrow(/colorScheme must be system, light, or dark/);
+  });
+
+  it('rejects unsafe worker paths, unbounded rules, and out-of-scope notification routes', () => {
+    expect(() => validateConfig({
+      ...config,
+      serviceWorker: {
+        fileName: '../worker.js?old=1',
+        runtimeCaching: [{
+          match: '/media/',
+          strategy: 'cache-first',
+          cacheName: 'media/private',
+          maxEntries: 0,
+          maxAgeSeconds: -1,
+          maxResponseBytes: 0,
+          responseTypes: ['opaque'],
+        }],
+        notifications: { routeAllowlist: ['https://attacker.example/'] },
+      },
+    })).toThrow(/fileName|cacheName|maxEntries|maxAgeSeconds|maxResponseBytes|opaque|Notification route/);
+  });
+
+  it('requires private caches to declare a logout purge and threat review', () => {
+    expect(() => validateConfig({
+      ...config,
+      serviceWorker: {
+        runtimeCaching: [{
+          match: '/api/private/',
+          strategy: 'network-first',
+          cacheName: 'private-data',
+          maxEntries: 2,
+          maxAgeSeconds: 60,
+          sensitiveData: {
+            partitionKey: () => 'account',
+            purgeOnLogout: true,
+            threatReview: '',
+          },
+        }],
+      },
+    })).toThrow(/threatReview/);
+  });
+
+  it('rejects immediate update reload without explicit data-loss acceptance', () => {
+    expect(() => validateConfig({
+      ...config,
+      serviceWorker: { update: { mode: 'automatic', reload: 'immediate' } },
+    })).toThrow(/acceptDataLossRisk/);
+    expect(() => validateConfig({
+      ...config,
+      serviceWorker: {
+        update: { mode: 'automatic', reload: 'immediate', acceptDataLossRisk: true },
+      },
+    })).not.toThrow();
+  });
+
+  it('reports deterministic runtime-cache overlap with an example URL', () => {
+    const warnings = runtimeCacheOverlapWarnings({
+      ...config,
+      serviceWorker: {
+        runtimeCaching: [
+          { match: '/api/', strategy: 'network-first', cacheName: 'api', maxEntries: 5, maxAgeSeconds: 60 },
+          { match: '/api/images/', strategy: 'cache-first', cacheName: 'images', maxEntries: 5, maxAgeSeconds: 60 },
+        ],
+      },
+    });
+    expect(warnings).toEqual([
+      expect.stringContaining('/api/images/'),
+    ]);
+  });
+
+  it('emits optional desktop/install integration fields from typed config', () => {
+    const manifest = createManifest({
+      ...config,
+      app: {
+        ...config.app,
+        displayOverride: ['window-controls-overlay', 'standalone'],
+        screenshots: [{ src: '/wide.png', sizes: '1280x720', formFactor: 'wide' }],
+        shareTarget: { action: '/share', params: { title: 'title', files: [{ name: 'media', accept: ['video/mp4'] }] } },
+        protocolHandlers: [{ protocol: 'web+homeframe', url: '/open?value=%s' }],
+      },
+    }, '/');
+    expect(manifest).toMatchObject({
+      display_override: ['window-controls-overlay', 'standalone'],
+      screenshots: [{ src: '/wide.png', sizes: '1280x720', form_factor: 'wide' }],
+      share_target: { action: '/share', method: 'POST', enctype: 'multipart/form-data' },
+      protocol_handlers: [{ protocol: 'web+homeframe', url: '/open?value=%s' }],
+    });
   });
 });

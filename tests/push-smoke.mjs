@@ -1,11 +1,19 @@
 import { chromium } from 'playwright';
 
 const baseURL = process.env.HOMEFRAME_TEST_URL ?? 'http://127.0.0.1:4180';
-const headless = process.env.HEADLESS !== 'false';
-const browser = await chromium.launch({ headless });
-const context = await browser.newContext();
+const cdpURL = process.env.HOMEFRAME_CDP_URL;
+const headless = process.env.HEADLESS === 'true';
+const browser = cdpURL
+  ? await chromium.connectOverCDP(cdpURL)
+  : await chromium.launch({ headless });
+const context = cdpURL
+  ? browser.contexts()[0]
+  : await browser.newContext();
+if (!context) throw new Error('The connected Chrome instance has no default browser context.');
 await context.grantPermissions(['notifications'], { origin: new URL(baseURL).origin });
-const page = await context.newPage();
+const page = cdpURL
+  ? context.pages()[0] ?? await context.newPage()
+  : await context.newPage();
 page.on('console', (message) => {
   if (message.type() === 'error') console.error(`Browser console: ${message.text()}`);
 });
@@ -13,6 +21,12 @@ page.on('console', (message) => {
 try {
   await page.goto(new URL('/pwa?push-smoke=1', baseURL).href);
   await page.locator('[data-hf-shell]').waitFor();
+  const permission = await page.evaluate(() => Notification.permission);
+  if (permission !== 'granted') {
+    throw new Error(
+      `Notification permission is ${permission}. Chromium disables the Notifications API in headless mode; run a headed browser or set HOMEFRAME_CDP_URL to a headed Chrome debugging endpoint.`,
+    );
+  }
   await page.getByRole('button', { name: 'Enable push' }).click();
   const notifications = page.locator('.capability-card').filter({ hasText: 'Notifications' });
   try {

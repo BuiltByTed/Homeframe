@@ -44,4 +44,16 @@ In DevTools or the built-in PWA lab, confirm:
 - notification permission is requested only from the demo button;
 - a push sent through `/api/push/send` is displayed and its route opens without a document refresh.
 
+The real-push smoke must use a headed browser because Chromium deliberately
+disables the Notifications API in headless mode:
+
+```bash
+HOMEFRAME_TEST_URL=https://192.0.2.10:4443 npm run test:push
+```
+
+For a Chrome instance already running with a nonzero remote-debugging port, set
+`HOMEFRAME_CDP_URL` to that local debugging endpoint. The smoke runner will use
+the existing headed profile; closing the runner disconnects its automation
+session without quitting that Chrome instance.
+
 Each origin and port is a separate installed-app identity in browser storage. When moving from HTTP to HTTPS or changing ports, install the HTTPS app separately; this is not representative of a production in-place upgrade, where the origin stays stable.

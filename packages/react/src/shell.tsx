@@ -11,8 +11,10 @@ import {
   type MutableRefObject,
   type ReactNode,
   type Ref,
+  type UIEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { getHomeframeRootStyle } from '@homeframe/runtime';
 import { useHomeframe } from './context.js';
 
 type PolymorphicProps<T extends ElementType> = {
@@ -34,6 +36,8 @@ export function AppViewport<T extends ElementType = 'div'>({
 }
 
 export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
+  as?: ElementType;
+  contentAs?: ElementType;
   header?: ReactNode;
   bottom?: ReactNode;
   headerSafeArea?: boolean;
@@ -41,28 +45,32 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 export function AppShell({
+  as = 'div',
+  contentAs = 'main',
   header,
   bottom,
   headerSafeArea = true,
-  bottomKeyboard = 'avoid',
+  bottomKeyboard,
   children,
   ...props
 }: AppShellProps) {
-  return (
-    <div {...props} data-hf-shell="">
-      {header == null ? <div /> : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>}
-      <main data-hf-content="">{children}</main>
-      {bottom == null ? <div /> : <ViewportDock keyboard={bottomKeyboard}>{bottom}</ViewportDock>}
-    </div>
+  const { config } = useHomeframe();
+  const dockPolicy = bottomKeyboard ?? config.bottomDock ?? 'avoid';
+  return createElement(
+    as,
+    { ...props, 'data-hf-shell': '' },
+    header == null ? <div /> : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>,
+    createElement(contentAs, { 'data-hf-content': '' }, children),
+    bottom == null ? <div /> : <ViewportDock keyboard={dockPolicy}>{bottom}</ViewportDock>,
   );
 }
 
-function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLDivElement | null> {
-  const ref = useRef<HTMLDivElement>(null);
+function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLElement | null> {
+  const ref = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const update = () => document.documentElement.style.setProperty(variable, `${element.offsetHeight}px`);
+    const update = () => getHomeframeRootStyle().setProperty(variable, `${element.offsetHeight}px`);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
@@ -71,62 +79,72 @@ function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLDivEleme
   return ref;
 }
 
-export interface AppHeaderProps extends HTMLAttributes<HTMLDivElement> {
+export interface AppHeaderProps extends HTMLAttributes<HTMLElement> {
+  as?: ElementType;
   safeArea?: boolean;
+  windowControlsOverlay?: boolean;
 }
 
-export const AppHeader = forwardRef<HTMLDivElement, AppHeaderProps>(function AppHeader({
+export const AppHeader = forwardRef<HTMLElement, AppHeaderProps>(function AppHeader({
+  as = 'div',
   safeArea = true,
-  style,
+  windowControlsOverlay = false,
   ...props
 }, forwardedRef) {
   const measuredRef = useMeasuredCssVariable('--hf-header-height');
-  return (
-    <div
-      {...props}
-      ref={(element) => {
+  return createElement(as, {
+      ...props,
+      ref: (element: HTMLElement | null) => {
         measuredRef.current = element;
         assignRef(forwardedRef, element);
-      }}
-      data-hf-header=""
-      style={{ ...style, paddingTop: safeArea ? undefined : 0 }}
-    />
-  );
+      },
+      'data-hf-header': '',
+      'data-safe-area': safeArea ? undefined : 'false',
+      'data-window-controls-overlay': windowControlsOverlay || undefined,
+    });
 });
+
+export function HomeframeWindowDragRegion<T extends ElementType = 'div'>({
+  as,
+  ...props
+}: PolymorphicProps<T>) {
+  return createElement(as ?? 'div', { ...props, 'data-hf-window-drag': '' });
+}
 
 export type DockKeyboardPolicy = 'avoid' | 'hide' | 'overlay' | 'manual';
 
-export interface ViewportDockProps extends HTMLAttributes<HTMLDivElement> {
+export interface ViewportDockProps extends HTMLAttributes<HTMLElement> {
+  as?: ElementType;
   keyboard?: DockKeyboardPolicy;
 }
 
-export const ViewportDock = forwardRef<HTMLDivElement, ViewportDockProps>(function ViewportDock({
+export const ViewportDock = forwardRef<HTMLElement, ViewportDockProps>(function ViewportDock({
+  as = 'div',
   keyboard = 'avoid',
   ...props
 }, forwardedRef) {
   const measuredRef = useMeasuredCssVariable('--hf-bottom-height');
-  return (
-    <div
-      {...props}
-      ref={(element) => {
+  return createElement(as, {
+      ...props,
+      ref: (element: HTMLElement | null) => {
         measuredRef.current = element;
         assignRef(forwardedRef, element);
-      }}
-      data-hf-dock=""
-      data-keyboard-policy={keyboard}
-    />
-  );
+      },
+      'data-hf-dock': '',
+      'data-keyboard-policy': keyboard,
+    });
 });
 
 export const KeyboardDock = ViewportDock;
 
 export interface AppScrollViewHandle {
-  element: HTMLDivElement | null;
+  element: HTMLElement | null;
   scrollTo(options?: ScrollToOptions): void;
   reveal(element: Element): void;
 }
 
-export interface AppScrollViewProps extends HTMLAttributes<HTMLDivElement> {
+export interface AppScrollViewProps extends HTMLAttributes<HTMLElement> {
+  as?: ElementType;
   scrollKey?: string;
   navigationType?: 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
   scrollBehavior?: 'reset' | 'restore' | 'preserve';
@@ -137,6 +155,7 @@ const scrollPositions = new Map<string, number>();
 
 export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>(
   function AppScrollView({
+    as = 'div',
     scrollKey,
     navigationType = 'unknown',
     scrollBehavior,
@@ -144,7 +163,7 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
     onScroll,
     ...props
   }, forwardedRef) {
-    const ref = useRef<HTMLDivElement>(null);
+    const ref = useRef<HTMLElement>(null);
     const activeScrollKey = useRef(scrollKey);
 
     useImperativeHandle(forwardedRef, () => ({
@@ -181,18 +200,16 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       return () => window.removeEventListener('homeframe:viewport-change', listener);
     }, [revealFocusedControl]);
 
-    return (
-      <div
-        {...props}
-        ref={ref}
-        data-hf-scroll-view=""
-        data-hf-scroll-key={scrollKey}
-        onScroll={(event) => {
+    return createElement(as, {
+        ...props,
+        ref,
+        'data-hf-scroll-view': '',
+        'data-hf-scroll-key': scrollKey,
+        onScroll: (event: UIEvent<HTMLElement>) => {
           if (scrollKey) scrollPositions.set(scrollKey, event.currentTarget.scrollTop);
           onScroll?.(event);
-        }}
-      />
-    );
+        },
+      });
   },
 );
 

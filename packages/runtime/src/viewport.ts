@@ -1,4 +1,5 @@
 import { emitRuntimeEvent } from './events.js';
+import { getHomeframeRootStyle } from './style-store.js';
 
 export type KeyboardPhase = 'closed' | 'opening' | 'open' | 'closing';
 export type DisplayMode =
@@ -85,6 +86,10 @@ export function detectDisplayMode(): DisplayMode {
 
 function finite(value: number, fallback: number): number {
   return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function bounded(value: number, fallback: number, maximum: number): number {
+  return Number.isFinite(value) && value >= 0 && value <= maximum ? value : fallback;
 }
 
 function closeEnough(a: number, b: number): boolean {
@@ -283,22 +288,35 @@ export class ViewportController {
     const visual = window.visualViewport;
     const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
     const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
-    const width = finite(visual?.width ?? layoutWidth, layoutWidth);
-    const height = finite(visual?.height ?? layoutHeight, layoutHeight);
-    const x = finite(visual?.offsetLeft ?? 0, 0);
-    const y = finite(visual?.offsetTop ?? 0, 0);
-    const scale = finite(visual?.scale ?? 1, 1);
-    const orientation = width > height ? 'landscape' as const : 'portrait' as const;
+    const previousWidth = this.snapshot.width || layoutWidth;
+    const previousHeight = this.snapshot.height || layoutHeight;
+    const width = bounded(visual?.width ?? layoutWidth, previousWidth, Math.max(1, layoutWidth * 2));
+    const height = bounded(visual?.height ?? layoutHeight, previousHeight, Math.max(1, layoutHeight * 2));
+    const x = bounded(visual?.offsetLeft ?? 0, this.snapshot.x, Math.max(1, layoutWidth));
+    const y = bounded(visual?.offsetTop ?? 0, this.snapshot.y, Math.max(1, layoutHeight));
+    const scale = bounded(visual?.scale ?? 1, this.snapshot.scale || 1, 10) || 1;
+    // Keyboard shrinkage can make the visual viewport wider than it is tall in
+    // portrait. Orientation belongs to the stable layout viewport, not that
+    // transient visible rectangle.
+    const orientation = layoutWidth > layoutHeight ? 'landscape' as const : 'portrait' as const;
     const displayMode = detectDisplayMode();
 
     let stableWidth = this.snapshot.stableWidth;
     let stableHeight = this.snapshot.stableHeight;
+    const viewportIdentityChanged = this.snapshot.revision > 0
+      && (orientation !== this.snapshot.orientation || displayMode !== this.snapshot.displayMode);
+    if (viewportIdentityChanged) {
+      stableWidth = 0;
+      stableHeight = 0;
+      this.stableSamples = 0;
+      this.lastCandidate = null;
+    }
     if (!stableWidth || !stableHeight) {
       stableWidth = Math.max(layoutWidth, width);
       stableHeight = Math.max(layoutHeight, height + y);
     }
 
-    const virtualKeyboardHeight = this.readVirtualKeyboardHeight();
+    const virtualKeyboardHeight = Math.min(this.readVirtualKeyboardHeight(), stableHeight);
     const visualKeyboardHeight = Math.max(0, stableHeight - (height + y));
     const threshold = Math.min(
       this.options.keyboardThresholdPx,
@@ -306,21 +324,31 @@ export class ViewportController {
     );
     const previousOpen = this.snapshot.keyboard.phase === 'open'
       || this.snapshot.keyboard.phase === 'opening';
+    const previousActive = this.snapshot.keyboard.phase !== 'closed';
+    const meaningfulVisualReduction = visualKeyboardHeight >= threshold && scale <= 1.01;
     const inferredOpen = Boolean(this.focusedEditable)
-      && visualKeyboardHeight >= threshold
-      && scale <= 1.01;
-    const keyboardHeight = virtualKeyboardHeight > 0
+      && meaningfulVisualReduction;
+    // After blur, WebKit can retain the old visual viewport for several frames.
+    // Keep publishing that geometry as `closing` so an avoid dock follows the
+    // keyboard instead of falling to the physical bottom prematurely.
+    const inferredClosing = !this.focusedEditable
+      && previousActive
+      && meaningfulVisualReduction;
+    const hasVirtualKeyboard = virtualKeyboardHeight > 0
+      && (Boolean(this.focusedEditable) || previousActive);
+    const keyboardHeight = hasVirtualKeyboard
       ? virtualKeyboardHeight
-      : inferredOpen ? visualKeyboardHeight : 0;
-    const keyboardSource = virtualKeyboardHeight > 0
+      : inferredOpen || inferredClosing ? visualKeyboardHeight : 0;
+    const keyboardSource = hasVirtualKeyboard
       ? 'virtual-keyboard' as const
-      : inferredOpen ? 'visual-viewport' as const : 'none' as const;
+      : inferredOpen || inferredClosing ? 'visual-viewport' as const : 'none' as const;
 
     let keyboardPhase: KeyboardPhase;
     if (keyboardHeight > 0) {
-      keyboardPhase = previousOpen && closeEnough(keyboardHeight, this.snapshot.keyboard.height)
-        ? 'open'
-        : 'opening';
+      if (!this.focusedEditable) keyboardPhase = 'closing';
+      else keyboardPhase = previousOpen && closeEnough(keyboardHeight, this.snapshot.keyboard.height)
+          ? 'open'
+          : 'opening';
     } else {
       keyboardPhase = previousOpen || this.snapshot.keyboard.phase === 'closing'
         ? 'closing'
@@ -335,6 +363,7 @@ export class ViewportController {
       stableHeight = Math.max(height + y, layoutHeight);
     }
 
+    const rawSafeArea = this.readSafeArea();
     const candidate = {
       width,
       height,
@@ -344,7 +373,12 @@ export class ViewportController {
       stableHeight,
       scale,
       orientation,
-      safeArea: this.readSafeArea(),
+      safeArea: {
+        top: Math.min(rawSafeArea.top, stableHeight / 2),
+        right: Math.min(rawSafeArea.right, stableWidth / 2),
+        bottom: Math.min(rawSafeArea.bottom, stableHeight / 2),
+        left: Math.min(rawSafeArea.left, stableWidth / 2),
+      },
       keyboard: {
         phase: keyboardPhase,
         height: keyboardHeight,
@@ -366,7 +400,10 @@ export class ViewportController {
 
     if (keyboardPhase === 'opening' && this.stableSamples >= 1) {
       candidate.keyboard.phase = 'open';
-    } else if (keyboardPhase === 'closing' && this.stableSamples >= 1) {
+    } else if (keyboardPhase === 'closing'
+      && keyboardHeight === 0
+      && closeEnough(height + y, stableHeight)
+      && this.stableSamples >= 1) {
       candidate.keyboard.phase = 'closed';
     }
 
@@ -382,11 +419,12 @@ export class ViewportController {
 
   private writeCss(snapshot: HomeframeViewportSnapshot): void {
     const root = document.documentElement;
+    const style = getHomeframeRootStyle();
     const px = (value: number) => `${Math.max(0, value)}px`;
-    root.style.setProperty('--hf-viewport-width', px(snapshot.width));
-    root.style.setProperty('--hf-viewport-height', px(snapshot.height));
-    root.style.setProperty('--hf-viewport-x', px(snapshot.x));
-    root.style.setProperty('--hf-viewport-y', px(snapshot.y));
+    style.setProperty('--hf-viewport-width', px(snapshot.width));
+    style.setProperty('--hf-viewport-height', px(snapshot.height));
+    style.setProperty('--hf-viewport-x', px(snapshot.x));
+    style.setProperty('--hf-viewport-y', px(snapshot.y));
     const visualRight = snapshot.x + snapshot.width;
     const visualBottom = snapshot.y + snapshot.height;
     // Installed apps keep one immutable shell rectangle for their entire
@@ -395,30 +433,30 @@ export class ViewportController {
     // keyboard animation.
     const useStableInstalledGeometry = snapshot.displayMode !== 'browser'
       && snapshot.displayMode !== 'unknown';
-    root.style.setProperty(
+    style.setProperty(
       '--hf-shell-width',
       px(useStableInstalledGeometry ? Math.max(snapshot.stableWidth, visualRight) : visualRight),
     );
-    root.style.setProperty(
+    style.setProperty(
       '--hf-shell-height',
       px(useStableInstalledGeometry ? Math.max(snapshot.stableHeight, visualBottom) : visualBottom),
     );
-    root.style.setProperty('--hf-stable-width', px(snapshot.stableWidth));
-    root.style.setProperty('--hf-stable-height', px(snapshot.stableHeight));
-    root.style.setProperty('--hf-safe-top', px(snapshot.safeArea.top));
-    root.style.setProperty('--hf-safe-right', px(snapshot.safeArea.right));
-    root.style.setProperty('--hf-safe-bottom', px(snapshot.safeArea.bottom));
-    root.style.setProperty('--hf-safe-left', px(snapshot.safeArea.left));
-    root.style.setProperty(
+    style.setProperty('--hf-stable-width', px(snapshot.stableWidth));
+    style.setProperty('--hf-stable-height', px(snapshot.stableHeight));
+    style.setProperty('--hf-safe-top', px(snapshot.safeArea.top));
+    style.setProperty('--hf-safe-right', px(snapshot.safeArea.right));
+    style.setProperty('--hf-safe-bottom', px(snapshot.safeArea.bottom));
+    style.setProperty('--hf-safe-left', px(snapshot.safeArea.left));
+    style.setProperty(
       '--hf-effective-safe-bottom',
       snapshot.keyboard.phase === 'closed' ? px(snapshot.safeArea.bottom) : '0px',
     );
-    root.style.setProperty('--hf-keyboard-height', px(snapshot.keyboard.height));
-    root.style.setProperty(
+    style.setProperty('--hf-keyboard-height', px(snapshot.keyboard.height));
+    style.setProperty(
       '--hf-input-min-font-size',
       px(this.options.inputZoomMinimumPx / Math.min(Math.max(snapshot.scale, 0.1), 1)),
     );
-    root.style.setProperty(
+    style.setProperty(
       '--hf-keyboard-open',
       snapshot.keyboard.phase === 'closed' ? '0' : '1',
     );

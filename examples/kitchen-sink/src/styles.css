@@ -1,18 +1,9 @@
 :root {
-  --hf-app-background: #020617;
   --hf-header-background: #0b1429;
   --hf-dock-background: #0b1429;
   font-family: Inter, ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   color: #e2e8f0;
-  background: #020617;
   font-synthesis: none;
-}
-
-@media (display-mode: standalone) {
-  :root {
-    /* Match iOS's system-owned under-page region to the bottom dock. */
-    --hf-app-background: #0b1429;
-  }
 }
 
 button,

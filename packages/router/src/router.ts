@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { getBuildInfo } from '@homeframe/runtime';
+import { emitRuntimeEvent, getBuildInfo, getHomeframeRootStyle } from '@homeframe/runtime';
 
 export type NavigationDirection = 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
 export type RouteScrollAction = 'reset' | 'restore' | 'preserve';
@@ -163,21 +163,24 @@ export class HomeframeRouter {
   private edgeGesture: EdgeGesture | null = null;
   private edgeNavigationElement: HTMLElement | null = null;
   private snapshot: RouterSnapshot;
+  private readonly serverSnapshot: RouterSnapshot;
 
   constructor(routes: HomeframeRoute[], options: HomeframeRouterOptions = {}) {
     this.routes = routes;
-    this.scope = options.scope
+    const embeddedOptions = (getBuildInfo()?.routerConfig ?? {}) as HomeframeRouterOptions;
+    const resolvedOptions = { ...embeddedOptions, ...options };
+    this.scope = resolvedOptions.scope
       ?? getBuildInfo()?.serviceWorkerScope
       ?? '/';
-    this.historyMode = options.historyMode ?? 'auto';
-    this.edgeNavigation = options.edgeNavigation === false
+    this.historyMode = resolvedOptions.historyMode ?? 'auto';
+    this.edgeNavigation = resolvedOptions.edgeNavigation === false
       ? false
       : {
-          edgeWidth: typeof options.edgeNavigation === 'object'
-            ? options.edgeNavigation.edgeWidth ?? 24
+          edgeWidth: typeof resolvedOptions.edgeNavigation === 'object'
+            ? resolvedOptions.edgeNavigation.edgeWidth ?? 24
             : 24,
-          commitDistance: typeof options.edgeNavigation === 'object'
-            ? options.edgeNavigation.commitDistance ?? 88
+          commitDistance: typeof resolvedOptions.edgeNavigation === 'object'
+            ? resolvedOptions.edgeNavigation.commitDistance ?? 88
             : 88,
         };
     const url = typeof window === 'undefined' ? new URL('http://homeframe.invalid/') : currentUrl();
@@ -193,14 +196,23 @@ export class HomeframeRouter {
       error: null,
       revision: 0,
     };
+    this.serverSnapshot = this.snapshot;
   }
 
   getSnapshot = (): RouterSnapshot => this.snapshot;
-  getServerSnapshot = (): RouterSnapshot => this.snapshot;
+  getServerSnapshot = (): RouterSnapshot => this.serverSnapshot;
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  canHandle(to: string | URL): boolean {
+    if (typeof window === 'undefined') return false;
+    const url = new URL(to, window.location.href);
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && url.origin === window.location.origin
+      && isWithinScope(url.pathname, this.scope);
+  }
 
   start(): () => void {
     if (typeof window === 'undefined') return () => undefined;
@@ -303,7 +315,7 @@ export class HomeframeRouter {
     if (typeof document !== 'undefined') {
       delete document.documentElement.dataset.hfHistoryMode;
       delete document.documentElement.dataset.hfEdgeNavigation;
-      document.documentElement.style.removeProperty('--hf-edge-progress');
+      getHomeframeRootStyle().removeProperty('--hf-edge-progress');
     }
   }
 
@@ -351,6 +363,7 @@ export class HomeframeRouter {
 
   async prefetch(to: string | URL): Promise<void> {
     const url = new URL(to, window.location.href);
+    if (!this.canHandle(url)) return;
     const match = matchRoute(this.routes, url.pathname);
     if (!match?.route.loader || this.dataCache.has(url.href)) return;
     const controller = new AbortController();
@@ -467,9 +480,10 @@ export class HomeframeRouter {
 
     const root = document.documentElement;
     root.dataset.hfEdgeNavigation = direction;
-    root.style.setProperty('--hf-edge-progress', '0');
-    root.style.setProperty('--hf-edge-live-offset', '0px');
-    root.style.setProperty(
+    const style = getHomeframeRootStyle();
+    style.setProperty('--hf-edge-progress', '0');
+    style.setProperty('--hf-edge-live-offset', '0px');
+    style.setProperty(
       '--hf-edge-preview-offset',
       direction === 'back' ? `${window.innerWidth * -0.18}px` : `${window.innerWidth}px`,
     );
@@ -489,14 +503,14 @@ export class HomeframeRouter {
   private setEdgeOffset(gesture: EdgeGesture, offset: number, commitDistance: number): void {
     const width = Math.max(1, window.innerWidth);
     const clamped = Math.min(width, Math.max(0, offset));
-    const root = document.documentElement;
-    root.style.setProperty('--hf-edge-progress', String(Math.min(1, clamped / commitDistance)));
+    const style = getHomeframeRootStyle();
+    style.setProperty('--hf-edge-progress', String(Math.min(1, clamped / commitDistance)));
     if (gesture.direction === 'back') {
-      root.style.setProperty('--hf-edge-live-offset', `${clamped}px`);
-      root.style.setProperty('--hf-edge-preview-offset', `${-0.18 * (width - clamped)}px`);
+      style.setProperty('--hf-edge-live-offset', `${clamped}px`);
+      style.setProperty('--hf-edge-preview-offset', `${-0.18 * (width - clamped)}px`);
     } else {
-      root.style.setProperty('--hf-edge-live-offset', `${clamped * -0.08}px`);
-      root.style.setProperty('--hf-edge-preview-offset', `${width - clamped}px`);
+      style.setProperty('--hf-edge-live-offset', `${clamped * -0.08}px`);
+      style.setProperty('--hf-edge-preview-offset', `${width - clamped}px`);
     }
   }
 
@@ -529,7 +543,7 @@ export class HomeframeRouter {
     surface.dataset.hfEdgeNavigationSurface = '';
     surface.setAttribute('aria-hidden', 'true');
     surface.innerHTML = '<i data-hf-edge-guard="back"></i><i data-hf-edge-guard="forward"></i><b data-hf-edge-indicator></b>';
-    surface.style.setProperty('--hf-edge-width', `${edgeNavigation.edgeWidth}px`);
+    getHomeframeRootStyle().setProperty('--hf-edge-width', `${edgeNavigation.edgeWidth}px`);
     (document.body ?? document.documentElement).append(surface);
     this.edgeNavigationElement = surface;
 
@@ -588,9 +602,10 @@ export class HomeframeRouter {
     gesture?.preview.remove();
     delete document.documentElement.dataset.hfEdgeNavigation;
     delete document.documentElement.dataset.hfEdgeSettling;
-    document.documentElement.style.removeProperty('--hf-edge-progress');
-    document.documentElement.style.removeProperty('--hf-edge-live-offset');
-    document.documentElement.style.removeProperty('--hf-edge-preview-offset');
+    const style = getHomeframeRootStyle();
+    style.removeProperty('--hf-edge-progress');
+    style.removeProperty('--hf-edge-live-offset');
+    style.removeProperty('--hf-edge-preview-offset');
   }
 
   private async resolve(
@@ -653,7 +668,14 @@ export class HomeframeRouter {
     }
     for (const listener of this.listeners) listener();
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('homeframe:route-change', { detail: this.snapshot }));
+      emitRuntimeEvent('route-change', this.snapshot);
+      if (this.snapshot.status === 'error' || this.snapshot.status === 'not-found') {
+        emitRuntimeEvent('route-recovery', {
+          pathname: this.snapshot.url.pathname,
+          status: this.snapshot.status,
+          routeId: this.snapshot.match?.route.id ?? null,
+        });
+      }
       if (this.snapshot.status !== 'loading') {
         window.dispatchEvent(new Event('homeframe:router-ready'));
       }

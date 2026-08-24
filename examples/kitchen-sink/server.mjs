@@ -1,8 +1,9 @@
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { createHash, randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
-import { extname, resolve } from 'node:path';
+import { extname, isAbsolute, relative, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import webpush from 'web-push';
 
@@ -16,6 +17,10 @@ const port = Number(portArgument?.split('=')[1] ?? process.env.PORT ?? 4173);
 const skipBuild = process.argv.includes('--skip-build');
 const tlsCertificatePath = process.env.HOMEFRAME_TLS_CERT;
 const tlsKeyPath = process.env.HOMEFRAME_TLS_KEY;
+const allowedHosts = new Set((process.env.HOMEFRAME_ALLOWED_HOSTS ?? '')
+  .split(',')
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean));
 if (Boolean(tlsCertificatePath) !== Boolean(tlsKeyPath)) {
   throw new Error('Set both HOMEFRAME_TLS_CERT and HOMEFRAME_TLS_KEY, or neither.');
 }
@@ -39,8 +44,11 @@ if (!skipBuild) {
 
 const dist = resolve(exampleRoot, 'dist');
 const subscriptions = new Map();
-for (const subscription of await readJson(subscriptionsPath, [])) {
-  if (subscription?.endpoint) subscriptions.set(subscription.endpoint, subscription);
+const rateBuckets = new Map();
+let pushSendInFlight = false;
+const storedSubscriptions = await readJson(subscriptionsPath, []);
+for (const subscription of (Array.isArray(storedSubscriptions) ? storedSubscriptions.slice(0, 200) : [])) {
+  if (validSubscription(subscription)) subscriptions.set(subscription.endpoint, subscription);
 }
 
 const mimeTypes = {
@@ -62,7 +70,10 @@ const handleRequest = async (request, response) => {
       await handleApi(request, response, url);
       return;
     }
-    await serveStatic(response, url.pathname);
+    const rawPathname = request.url?.startsWith('/')
+      ? request.url.split(/[?#]/, 1)[0]
+      : url.pathname;
+    await serveStatic(response, url.pathname, rawPathname);
   } catch (error) {
     json(response, Number(error?.statusCode) || 500, {
       error: error instanceof Error ? error.message : String(error),
@@ -90,9 +101,15 @@ async function handleApi(request, response, url) {
   }
   if (url.pathname === '/api/push/subscriptions' && request.method === 'PUT') {
     requireSameSite(request);
+    requireJson(request);
+    enforceRateLimit(request, 'subscriptions', 60, 60_000);
     const subscription = await bodyJson(request, 16_384);
-    if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
+    if (!validSubscription(subscription)) {
       json(response, 400, { error: 'A complete PushSubscription is required.' });
+      return;
+    }
+    if (!subscriptions.has(subscription.endpoint) && subscriptions.size >= 200) {
+      json(response, 507, { error: 'The demo subscription limit has been reached.' });
       return;
     }
     subscriptions.set(subscription.endpoint, subscription);
@@ -103,6 +120,8 @@ async function handleApi(request, response, url) {
   }
   if (url.pathname === '/api/push/subscriptions' && request.method === 'DELETE') {
     requireSameSite(request);
+    requireJson(request);
+    enforceRateLimit(request, 'subscriptions', 60, 60_000);
     const body = await bodyJson(request, 4_096);
     if (typeof body?.endpoint === 'string') subscriptions.delete(body.endpoint);
     await persistSubscriptions();
@@ -112,6 +131,12 @@ async function handleApi(request, response, url) {
   }
   if (url.pathname === '/api/push/send' && request.method === 'POST') {
     requireSameSite(request);
+    requireJson(request);
+    enforceRateLimit(request, 'send', 10, 60_000);
+    if (pushSendInFlight) {
+      json(response, 409, { error: 'A demo push send is already in progress.' });
+      return;
+    }
     const input = await bodyJson(request, 8_192);
     const payload = JSON.stringify({
       version: 1,
@@ -123,15 +148,24 @@ async function handleApi(request, response, url) {
     });
     let sent = 0;
     let failed = 0;
-    for (const [endpoint, subscription] of subscriptions) {
-      try {
-        await webpush.sendNotification(subscription, payload, { TTL: 60, urgency: 'normal' });
-        sent += 1;
-      } catch (error) {
-        failed += 1;
-        if (error?.statusCode === 404 || error?.statusCode === 410) subscriptions.delete(endpoint);
-        else console.error('Push delivery failed:', error?.message ?? error);
+    pushSendInFlight = true;
+    try {
+      for (const [endpoint, subscription] of subscriptions) {
+        try {
+          await webpush.sendNotification(subscription, payload, {
+            TTL: 60,
+            urgency: 'normal',
+            timeout: 5_000,
+          });
+          sent += 1;
+        } catch (error) {
+          failed += 1;
+          if (error?.statusCode === 404 || error?.statusCode === 410) subscriptions.delete(endpoint);
+          else console.error('Push delivery failed:', error?.message ?? error);
+        }
       }
+    } finally {
+      pushSendInFlight = false;
     }
     await persistSubscriptions();
     json(response, 200, { sent, failed, subscriptions: subscriptions.size });
@@ -140,23 +174,43 @@ async function handleApi(request, response, url) {
   json(response, 404, { error: 'API route not found.' });
 }
 
-async function serveStatic(response, pathname) {
-  let file = resolve(dist, `.${decodeURIComponent(pathname)}`);
-  if (!file.startsWith(dist)) {
-    response.writeHead(403).end();
+async function serveStatic(response, pathname, rawPathname = pathname) {
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(rawPathname);
+  } catch {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Invalid URL encoding.');
+    return;
+  }
+  if (decodedPath.includes('\0')) {
+    response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Invalid path.');
+    return;
+  }
+  let file = resolve(dist, `.${decodedPath}`);
+  const relativeFile = relative(dist, file);
+  if (relativeFile.startsWith('..') || isAbsolute(relativeFile)) {
+    response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Forbidden.');
     return;
   }
   try {
     if ((await stat(file)).isDirectory()) file = resolve(file, 'index.html');
   } catch {
+    if (pathname === '/sw.js' || extname(pathname)) {
+      response.writeHead(404, {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      }).end('Not found.');
+      return;
+    }
     file = resolve(dist, 'index.html');
   }
-  const body = await readFile(file);
+  let body = await readFile(file);
   const extension = extname(file);
   const isWorker = pathname === '/sw.js';
   const isHtml = extension === '.html';
   const immutable = /\/assets\/.*-[A-Za-z0-9_-]+\.(js|css)$/.test(pathname);
-  response.writeHead(200, {
+  const headers = {
     'Content-Type': mimeTypes[extension] ?? 'application/octet-stream',
     'Cache-Control': isWorker || isHtml
       ? 'no-cache, max-age=0, must-revalidate'
@@ -165,16 +219,96 @@ async function serveStatic(response, pathname) {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Cross-Origin-Opener-Policy': 'same-origin',
-  });
+    'Cross-Origin-Resource-Policy': 'same-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+  };
+  if (isHtml) {
+    const templateRevision = createHash('sha256')
+      .update(body)
+      .update(process.env.HOMEFRAME_CACHE_SALT ?? '')
+      .digest('hex');
+    const nonce = randomBytes(18).toString('base64url');
+    body = Buffer.from(body.toString('utf8').replaceAll('__HOMEFRAME_CSP_NONCE__', nonce));
+    headers['Content-Security-Policy'] = [
+      "default-src 'self'",
+      `script-src 'self' 'nonce-${nonce}'`,
+      `style-src 'self' 'nonce-${nonce}'`,
+      "style-src-attr 'none'",
+      "img-src 'self' data: blob:",
+      "connect-src 'self'",
+      "worker-src 'self'",
+      "manifest-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "frame-ancestors 'none'",
+    ].join('; ');
+    headers['X-Homeframe-Revision'] = templateRevision;
+  }
+  response.writeHead(200, headers);
   response.end(body);
 }
 
 function requireSameSite(request) {
+  const requestHost = String(request.headers.host ?? '').toLowerCase();
+  if (allowedHosts.size > 0 && !allowedHosts.has(requestHost)) {
+    const error = new Error('Unrecognized Host header.');
+    error.statusCode = 403;
+    throw error;
+  }
+  const expectedOrigin = `${tlsCertificatePath ? 'https' : 'http'}://${requestHost}`;
+  const origin = request.headers.origin;
   const fetchSite = request.headers['sec-fetch-site'];
-  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'same-site') {
+  if ((origin && origin !== expectedOrigin)
+    || (!origin && fetchSite !== 'same-origin' && fetchSite !== 'same-site')
+    || (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'same-site')) {
     const error = new Error('Cross-site demo API request rejected.');
     error.statusCode = 403;
     throw error;
+  }
+}
+
+function requireJson(request) {
+  if (!String(request.headers['content-type'] ?? '').toLowerCase().startsWith('application/json')) {
+    const error = new Error('Demo API requests must use application/json.');
+    error.statusCode = 415;
+    throw error;
+  }
+}
+
+function validSubscription(value) {
+  if (!value || typeof value !== 'object') return false;
+  if (typeof value.endpoint !== 'string' || value.endpoint.length > 2_048) return false;
+  try {
+    const endpoint = new URL(value.endpoint);
+    if (endpoint.protocol !== 'https:') return false;
+  } catch {
+    return false;
+  }
+  return typeof value.keys?.p256dh === 'string'
+    && value.keys.p256dh.length <= 512
+    && typeof value.keys?.auth === 'string'
+    && value.keys.auth.length <= 512;
+}
+
+function enforceRateLimit(request, action, maximum, windowMs) {
+  const address = request.socket.remoteAddress ?? 'unknown';
+  const key = `${address}:${action}`;
+  const now = Date.now();
+  const current = rateBuckets.get(key);
+  const bucket = !current || current.resetAt <= now
+    ? { count: 0, resetAt: now + windowMs }
+    : current;
+  bucket.count += 1;
+  rateBuckets.set(key, bucket);
+  if (bucket.count > maximum) {
+    const error = new Error('Too many demo API requests.');
+    error.statusCode = 429;
+    throw error;
+  }
+  if (rateBuckets.size > 1_000) {
+    for (const [bucketKey, value] of rateBuckets) {
+      if (value.resetAt <= now) rateBuckets.delete(bucketKey);
+    }
   }
 }
 

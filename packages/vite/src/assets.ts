@@ -41,7 +41,12 @@ function sourcePath(root: string, value: string): string {
   return isAbsolute(value) ? value : resolve(root, value);
 }
 
-async function iconBuffer(source: Buffer, size: number, paddingRatio = 0): Promise<Buffer> {
+async function iconBuffer(
+  source: Buffer,
+  size: number,
+  paddingRatio = 0,
+  background: string | { r: number; g: number; b: number; alpha: number } = { r: 0, g: 0, b: 0, alpha: 0 },
+): Promise<Buffer> {
   const contentSize = Math.round(size * (1 - 2 * paddingRatio));
   const content = await sharp(source).resize(contentSize, contentSize, {
     fit: 'contain',
@@ -49,7 +54,7 @@ async function iconBuffer(source: Buffer, size: number, paddingRatio = 0): Promi
     background: { r: 0, g: 0, b: 0, alpha: 0 },
   }).png().toBuffer();
   return sharp({
-    create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    create: { width: size, height: size, channels: 4, background },
   }).composite([{ input: content, gravity: 'center' }]).png({ compressionLevel: 9 }).toBuffer();
 }
 
@@ -76,6 +81,9 @@ export async function generateAssets(
   const maskable = config.app.maskableIcon
     ? await readFile(sourcePath(root, config.app.maskableIcon))
     : icon;
+  const appleTouchIcon = config.app.appleTouchIcon
+    ? await readFile(sourcePath(root, config.app.appleTouchIcon))
+    : icon;
   const splashLogo = config.splash?.logo
     ? await readFile(sourcePath(root, config.splash.logo))
     : icon;
@@ -87,10 +95,11 @@ export async function generateAssets(
     size: number,
     purpose: string,
     paddingRatio = 0,
+    background?: string,
   ) => {
     assets.push({
       fileName,
-      source: await iconBuffer(source, size, paddingRatio),
+      source: await iconBuffer(source, size, paddingRatio, background),
       mimeType: 'image/png',
       purpose,
       width: size,
@@ -101,8 +110,11 @@ export async function generateAssets(
   await Promise.all([
     addIcon('generated/icon-192.png', icon, 192, 'manifest any'),
     addIcon('generated/icon-512.png', icon, 512, 'manifest any'),
-    addIcon('generated/icon-maskable-512.png', maskable, 512, 'manifest maskable', 0.1),
-    addIcon('generated/apple-touch-icon.png', icon, 180, 'Apple touch icon'),
+    // A centered square that is 56.56% of the canvas fits wholly within the
+    // standardized 40%-radius maskable safe circle. The full canvas is opaque,
+    // so no source artwork is silently cropped by the platform mask.
+    addIcon('generated/icon-maskable-512.png', maskable, 512, 'manifest maskable; content contained in safe circle', 0.2172, config.app.backgroundColor),
+    addIcon('generated/apple-touch-icon.png', appleTouchIcon, 180, 'Apple touch icon'),
     addIcon('generated/favicon-32.png', icon, 32, 'favicon'),
     addIcon('generated/notification-icon.png', icon, 192, 'notification icon'),
     addIcon('generated/notification-badge.png', maskable, 96, 'notification badge', 0.15),

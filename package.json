@@ -41,6 +41,7 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.1.0",
+    "eslint": "10.9.0",
     "jsdom": "30.0.1",
     "playwright": "1.62.1",
     "sharp": "0.35.3",

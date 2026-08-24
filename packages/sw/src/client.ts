@@ -4,12 +4,27 @@ import type {
   UpdateGuard,
 } from './types.js';
 
+interface UpdateCoordinationMessage {
+  type: 'ready' | 'safe-state' | 'activating' | 'current';
+  sender: string;
+  buildId: string | null;
+  safe?: boolean;
+  at: number;
+}
+
+interface PeerSafeState {
+  buildId: string | null;
+  safe: boolean;
+  at: number;
+}
+
 const serverSnapshot: ServiceWorkerSnapshot = {
   state: 'unsupported',
   currentBuild: null,
   availableBuild: null,
   error: null,
   registration: null,
+  guardCount: 0,
   revision: 0,
 };
 
@@ -26,6 +41,11 @@ export class HomeframeServiceWorkerClient {
   private hadControllerAtStart = false;
   private safePointTimer: number | null = null;
   private rootObserver: MutationObserver | null = null;
+  private readonly clientId = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  private coordinationChannel: BroadcastChannel | null = null;
+  private coordinationStorageKey = '';
+  private activationLeaseKey = '';
+  private peerSafeStates = new Map<string, PeerSafeState>();
 
   constructor(config: ServiceWorkerClientConfig = {}) {
     this.config = {
@@ -56,6 +76,7 @@ export class HomeframeServiceWorkerClient {
     if (this.abortController) return () => this.stop();
     this.abortController = new AbortController();
     const { signal } = this.abortController;
+    this.startCoordination(signal);
     this.hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     this.publish({ state: 'registering', error: null });
     try {
@@ -85,7 +106,14 @@ export class HomeframeServiceWorkerClient {
       this.rootObserver = new MutationObserver(retrySafePoint);
       this.rootObserver.observe(document.documentElement, {
         attributes: true,
-        attributeFilter: ['data-hf-keyboard', 'data-hf-modal', 'data-hf-prompt'],
+        attributeFilter: [
+          'data-hf-keyboard',
+          'data-hf-modal',
+          'data-hf-prompt',
+          'data-hf-critical-task',
+          'data-hf-router-ready',
+          'data-hf-ready',
+        ],
       });
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible'
@@ -120,12 +148,18 @@ export class HomeframeServiceWorkerClient {
     this.safePointTimer = null;
     this.rootObserver?.disconnect();
     this.rootObserver = null;
+    this.coordinationChannel?.close();
+    this.coordinationChannel = null;
+    this.peerSafeStates.clear();
+    this.releaseActivationLease();
   }
 
   registerGuard(guard: UpdateGuard): () => void {
     this.guards.add(guard);
+    this.publish({ guardCount: this.guards.size });
     return () => {
       this.guards.delete(guard);
+      this.publish({ guardCount: this.guards.size });
       this.scheduleSafePointRetry();
     };
   }
@@ -145,9 +179,11 @@ export class HomeframeServiceWorkerClient {
   }
 
   async activate(): Promise<void> {
+    if (this.snapshot.state === 'activating') return;
     const waiting = this.registration?.waiting;
     if (!waiting) return;
     this.publish({ state: 'activating' });
+    this.broadcastCoordination('activating', this.snapshot.availableBuild);
     waiting.postMessage({ type: 'HF_SKIP_WAITING' });
   }
 
@@ -157,7 +193,14 @@ export class HomeframeServiceWorkerClient {
 
   async purgeRuntimeCache(cacheName: string): Promise<void> {
     const worker = this.registration?.active ?? navigator.serviceWorker.controller;
-    worker?.postMessage({ type: 'HF_PURGE_RUNTIME', cacheName });
+    if (!worker) return;
+    await this.postMessageWithAck(worker, { type: 'HF_PURGE_RUNTIME', cacheName });
+  }
+
+  async purgePrivateCaches(): Promise<void> {
+    const worker = this.registration?.active ?? navigator.serviceWorker.controller;
+    if (!worker) return;
+    await this.postMessageWithAck(worker, { type: 'HF_PURGE_PRIVATE' });
   }
 
   private observeRegistration(registration: ServiceWorkerRegistration): void {
@@ -178,6 +221,7 @@ export class HomeframeServiceWorkerClient {
   private onWaiting(worker: ServiceWorker): void {
     void this.queryBuild(worker).then((buildId) => {
       this.publish({ state: 'ready', availableBuild: buildId });
+      this.broadcastCoordination('ready', buildId);
       void this.maybeActivate();
     });
   }
@@ -185,12 +229,21 @@ export class HomeframeServiceWorkerClient {
   private async maybeActivate(): Promise<void> {
     if (this.config.mode !== 'automatic') return;
     if (this.config.reload === 'immediate') {
-      await this.activate();
+      await this.activateAsLeader();
       return;
     }
     const safe = await this.isSafePoint();
-    if (safe) await this.activate();
-    else this.publish({ state: 'deferred' });
+    this.broadcastCoordination('safe-state', this.snapshot.availableBuild, safe);
+    if (!safe) {
+      this.publish({ state: 'deferred' });
+      return;
+    }
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 90));
+    if (this.hasUnsafePeer(this.snapshot.availableBuild)) {
+      this.publish({ state: 'deferred' });
+      return;
+    }
+    await this.activateAsLeader();
   }
 
   private scheduleSafePointRetry(): void {
@@ -207,6 +260,9 @@ export class HomeframeServiceWorkerClient {
     if (document.documentElement.dataset.hfKeyboard !== 'closed') return false;
     if (document.documentElement.dataset.hfModal === 'open') return false;
     if (document.documentElement.dataset.hfPrompt === 'open') return false;
+    if (document.documentElement.dataset.hfCriticalTask) return false;
+    if (document.documentElement.dataset.hfRouterReady === 'false') return false;
+    if (document.documentElement.dataset.hfReady !== 'true') return false;
     for (const guard of this.guards) {
       try {
         if (!await guard()) return false;
@@ -222,11 +278,13 @@ export class HomeframeServiceWorkerClient {
       this.hadControllerAtStart = true;
       void this.queryBuild(navigator.serviceWorker.controller).then((buildId) => {
         this.publish({ state: 'current', currentBuild: buildId, availableBuild: null });
+        this.broadcastCoordination('current', buildId);
       });
       return;
     }
     if (this.didReload || !this.config.reloadOnActivate) return;
     this.didReload = true;
+    this.broadcastCoordination('current', this.snapshot.availableBuild);
     this.publish({ state: 'reloading' });
     window.location.reload();
   }
@@ -238,12 +296,18 @@ export class HomeframeServiceWorkerClient {
       void this.maybeActivate();
     } else if (message.type === 'HF_ACTIVATED') {
       this.publish({ state: 'current', currentBuild: message.buildId ?? null });
+      this.broadcastCoordination('current', message.buildId ?? null);
     } else if (message.type === 'HF_NOTIFICATION_ROUTE' && typeof message.route === 'string') {
       window.dispatchEvent(new CustomEvent('homeframe:notification-route', {
         detail: { route: message.route },
       }));
     } else if (message.type === 'HF_PUSH_SUBSCRIPTION_CHANGE') {
-      window.dispatchEvent(new Event('homeframe:push-subscription-change'));
+      window.dispatchEvent(new CustomEvent('homeframe:push-subscription-change', {
+        detail: {
+          oldEndpoint: typeof message.oldEndpoint === 'string' ? message.oldEndpoint : null,
+          subscription: message.subscription ?? null,
+        },
+      }));
     } else if (message.type === 'HF_NOTIFICATION_CLOSE') {
       window.dispatchEvent(new CustomEvent('homeframe:notification-close', {
         detail: { tag: typeof message.tag === 'string' ? message.tag : null },
@@ -264,6 +328,140 @@ export class HomeframeServiceWorkerClient {
     });
   }
 
+  private postMessageWithAck(worker: ServiceWorker, message: unknown): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const channel = new MessageChannel();
+      const timeout = window.setTimeout(() => reject(new Error('The service worker did not acknowledge the purge request.')), 2_000);
+      channel.port1.onmessage = (event) => {
+        window.clearTimeout(timeout);
+        channel.port1.close();
+        if (event.data?.ok) resolve();
+        else reject(new Error(event.data?.error ?? 'The service worker rejected the purge request.'));
+      };
+      worker.postMessage(message, [channel.port2]);
+    });
+  }
+
+  private startCoordination(signal: AbortSignal): void {
+    const channelSuffix = this.config.scope.replace(/[^a-zA-Z0-9_-]+/g, '-') || 'app';
+    this.coordinationStorageKey = `hf:update:${channelSuffix}:message`;
+    this.activationLeaseKey = `hf:update:${channelSuffix}:leader`;
+    if ('BroadcastChannel' in globalThis) {
+      this.coordinationChannel = new BroadcastChannel(`homeframe-update-${channelSuffix}`);
+      this.coordinationChannel.addEventListener('message', (event) => {
+        this.receiveCoordination(event.data);
+      }, { signal });
+    }
+    window.addEventListener('storage', (event) => {
+      if (event.key !== this.coordinationStorageKey || !event.newValue) return;
+      try {
+        this.receiveCoordination(JSON.parse(event.newValue));
+      } catch {
+        // Ignore malformed values from unrelated app code sharing the origin.
+      }
+    }, { signal });
+  }
+
+  private broadcastCoordination(
+    type: UpdateCoordinationMessage['type'],
+    buildId: string | null,
+    safe?: boolean,
+  ): void {
+    const message: UpdateCoordinationMessage = {
+      type,
+      sender: this.clientId,
+      buildId,
+      ...(safe === undefined ? {} : { safe }),
+      at: Date.now(),
+    };
+    this.coordinationChannel?.postMessage(message);
+    try {
+      localStorage.setItem(this.coordinationStorageKey, JSON.stringify(message));
+    } catch {
+      // BroadcastChannel remains available in storage-restricted contexts.
+    }
+  }
+
+  private receiveCoordination(value: unknown): void {
+    if (!isCoordinationMessage(value) || value.sender === this.clientId) return;
+    if (value.type === 'safe-state' && typeof value.safe === 'boolean') {
+      this.peerSafeStates.set(value.sender, {
+        buildId: value.buildId,
+        safe: value.safe,
+        at: value.at,
+      });
+      if (value.safe) this.scheduleSafePointRetry();
+    } else if (value.type === 'ready') {
+      if (this.snapshot.state === 'current') {
+        this.publish({ state: 'ready', availableBuild: value.buildId });
+      }
+      void this.maybeActivate();
+    } else if (value.type === 'activating') {
+      this.publish({ state: 'activating', availableBuild: value.buildId });
+    } else if (value.type === 'current') {
+      this.publish({ state: 'current', currentBuild: value.buildId, availableBuild: null });
+    }
+  }
+
+  private hasUnsafePeer(buildId: string | null): boolean {
+    const cutoff = Date.now() - 30_000;
+    for (const [id, peer] of this.peerSafeStates) {
+      if (peer.at < cutoff) {
+        this.peerSafeStates.delete(id);
+        continue;
+      }
+      if (peer.buildId === buildId && !peer.safe) return true;
+    }
+    return false;
+  }
+
+  private async activateAsLeader(): Promise<void> {
+    const locks = (navigator as Navigator & {
+      locks?: {
+        request<T>(
+          name: string,
+          options: { ifAvailable: true; mode: 'exclusive' },
+          callback: (lock: unknown | null) => Promise<T>,
+        ): Promise<T>;
+      };
+    }).locks;
+    if (locks) {
+      await locks.request(this.activationLeaseKey, { ifAvailable: true, mode: 'exclusive' }, async (lock) => {
+        if (lock) await this.activate();
+      });
+      return;
+    }
+    if (!this.claimActivationLease()) return;
+    await this.activate();
+  }
+
+  private claimActivationLease(): boolean {
+    const now = Date.now();
+    try {
+      const current = JSON.parse(localStorage.getItem(this.activationLeaseKey) ?? 'null') as {
+        owner?: string;
+        expires?: number;
+      } | null;
+      if (current?.owner && current.owner !== this.clientId && (current.expires ?? 0) > now) return false;
+      const lease = { owner: this.clientId, expires: now + 15_000 };
+      localStorage.setItem(this.activationLeaseKey, JSON.stringify(lease));
+      const confirmed = JSON.parse(localStorage.getItem(this.activationLeaseKey) ?? 'null') as { owner?: string } | null;
+      return confirmed?.owner === this.clientId;
+    } catch {
+      return true;
+    }
+  }
+
+  private releaseActivationLease(): void {
+    if (!this.activationLeaseKey) return;
+    try {
+      const current = JSON.parse(localStorage.getItem(this.activationLeaseKey) ?? 'null') as { owner?: string } | null;
+      if (current?.owner === this.clientId) localStorage.removeItem(this.activationLeaseKey);
+    } catch {
+      // Storage is an optional fallback.
+    }
+  }
+
   private publish(patch: Partial<ServiceWorkerSnapshot>): void {
     this.snapshot = { ...this.snapshot, ...patch, revision: this.snapshot.revision + 1 };
     for (const listener of this.listeners) listener();
@@ -271,6 +469,16 @@ export class HomeframeServiceWorkerClient {
       window.dispatchEvent(new CustomEvent('homeframe:update-change', { detail: this.snapshot }));
     }
   }
+}
+
+function isCoordinationMessage(value: unknown): value is UpdateCoordinationMessage {
+  if (!value || typeof value !== 'object') return false;
+  const message = value as Partial<UpdateCoordinationMessage>;
+  return ['ready', 'safe-state', 'activating', 'current'].includes(message.type ?? '')
+    && typeof message.sender === 'string'
+    && (message.buildId === null || typeof message.buildId === 'string')
+    && typeof message.at === 'number'
+    && Number.isFinite(message.at);
 }
 
 function errorMessage(error: unknown): string {

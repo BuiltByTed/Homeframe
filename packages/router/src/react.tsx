@@ -113,7 +113,7 @@ export function Link({
       }}
       onClick={(event) => {
         onClick?.(event);
-        if (!event.defaultPrevented && eligibleClick(event, props)) {
+        if (!event.defaultPrevented && eligibleClick(event, props) && router.canHandle(href)) {
           event.preventDefault();
           void router.navigate(href, {
             ...(replace === undefined ? {} : { replace }),

@@ -9,6 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import {
+  emitRuntimeEvent,
+  getBuildInfo,
   getInstallController,
   getLifecycleController,
   getViewportController,
@@ -38,6 +40,8 @@ export interface HomeframeReactConfig {
   serviceWorker?: ServiceWorkerClientConfig | false;
   notifications?: HomeframeNotificationConfig | false;
   nudges?: HomeframeNudgeConfig;
+  bottomDock?: 'avoid' | 'hide' | 'overlay' | 'manual';
+  diagnostics?: { enabled?: boolean; queryParameter?: string };
 }
 
 interface HomeframeContextValue {
@@ -46,24 +50,36 @@ interface HomeframeContextValue {
 }
 
 const HomeframeContext = createContext<HomeframeContextValue | null>(null);
+const emptyReactConfig: HomeframeReactConfig = {};
 
 export function HomeframeProvider({
   config = {},
   children,
 }: PropsWithChildren<{ config?: HomeframeReactConfig }>) {
+  const embeddedConfig = (getBuildInfo()?.reactConfig ?? emptyReactConfig) as HomeframeReactConfig;
   const resolvedConfig = useMemo(() => ({
+    ...embeddedConfig,
     ...config,
-    selection: config.selection ?? 'controls-only' as const,
-    snapshot: config.snapshot ?? 'brand' as const,
-  }), [config]);
-  const viewport = useMemo(() => getViewportController(config.viewport), [config.viewport]);
+    viewport: { ...embeddedConfig.viewport, ...config.viewport },
+    nudges: { ...embeddedConfig.nudges, ...config.nudges },
+    selection: config.selection ?? embeddedConfig.selection ?? 'controls-only' as const,
+    snapshot: config.snapshot ?? embeddedConfig.snapshot ?? 'brand' as const,
+  }), [config, embeddedConfig]);
+  const viewport = useMemo(() => getViewportController(resolvedConfig.viewport), [resolvedConfig.viewport]);
   const lifecycle = useMemo(() => getLifecycleController(), []);
   const install = useMemo(() => getInstallController(), []);
   const serviceWorkerRef = useRef<HomeframeServiceWorkerClient | null>(null);
-  if (serviceWorkerRef.current === null && config.serviceWorker !== false) {
-    const build = typeof window === 'undefined' ? null : window.__HOMEFRAME_BUILD__;
+  const lastWorkerState = useRef<string | null>(null);
+  const build = typeof window === 'undefined' ? null : window.__HOMEFRAME_BUILD__;
+  if (serviceWorkerRef.current === null
+    && resolvedConfig.serviceWorker !== false
+    && build?.serviceWorkerConfig !== false) {
+    const embeddedWorker = build?.serviceWorkerConfig && typeof build.serviceWorkerConfig === 'object'
+      ? build.serviceWorkerConfig as ServiceWorkerClientConfig
+      : {};
     serviceWorkerRef.current = new HomeframeServiceWorkerClient({
-      ...config.serviceWorker,
+      ...embeddedWorker,
+      ...resolvedConfig.serviceWorker,
       ...(build?.serviceWorkerUrl ? { url: build.serviceWorkerUrl } : {}),
       ...(build?.serviceWorkerScope ? { scope: build.serviceWorkerScope } : {}),
     });
@@ -71,7 +87,28 @@ export function HomeframeProvider({
 
   useEffect(() => {
     const stops = [viewport.start(), lifecycle.start(), install.start()];
-    void serviceWorkerRef.current?.start();
+    const serviceWorker = serviceWorkerRef.current;
+    if (serviceWorker) {
+      stops.push(serviceWorker.subscribe(() => {
+        const snapshot = serviceWorker.getSnapshot();
+        emitRuntimeEvent('update-change', snapshot);
+        if (snapshot.state !== lastWorkerState.current) {
+          if (snapshot.state === 'deferred') {
+            emitRuntimeEvent('update-deferral', {
+              availableBuild: snapshot.availableBuild,
+              guardCount: snapshot.guardCount,
+            });
+          } else if (snapshot.state === 'failed') {
+            emitRuntimeEvent('worker-failure', {
+              state: snapshot.state,
+              error: snapshot.error,
+            });
+          }
+          lastWorkerState.current = snapshot.state;
+        }
+      }));
+    }
+    void serviceWorker?.start();
     return () => {
       for (const stop of stops) stop();
       serviceWorkerRef.current?.stop();
@@ -87,7 +124,7 @@ export function HomeframeProvider({
     <HomeframeContext.Provider value={value}>
       <HomeframeReadinessProvider>
         <LifecyclePresentation snapshot={resolvedConfig.snapshot} viewport={viewport}>
-          <HomeframeNudgeProvider {...(config.nudges ? { config: config.nudges } : {})}>
+          <HomeframeNudgeProvider {...(resolvedConfig.nudges ? { config: resolvedConfig.nudges } : {})}>
             {children}
           </HomeframeNudgeProvider>
         </LifecyclePresentation>

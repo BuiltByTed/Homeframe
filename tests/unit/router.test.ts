@@ -95,4 +95,15 @@ describe('HomeframeRouter', () => {
     expect(router.getSnapshot().direction).toBe('forward');
     router.stop();
   });
+
+  it('intercepts only same-origin HTTP routes inside the configured scope', () => {
+    history.replaceState(null, '', '/app/');
+    const router = createHomeframeRouter([
+      { id: 'home', path: '/app/', element: null },
+    ], { scope: '/app/' });
+    expect(router.canHandle('/app/items/1')).toBe(true);
+    expect(router.canHandle('/outside')).toBe(false);
+    expect(router.canHandle('https://example.com/app/')).toBe(false);
+    expect(router.canHandle('mailto:hello@example.com')).toBe(false);
+  });
 });

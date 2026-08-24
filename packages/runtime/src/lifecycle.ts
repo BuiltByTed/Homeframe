@@ -22,6 +22,7 @@ export class LifecycleController {
   private snapshot: LifecycleSnapshot = serverSnapshot;
   private listeners = new Set<() => void>();
   private abortController: AbortController | null = null;
+  private restoringStartedAt: number | null = null;
 
   getSnapshot = (): LifecycleSnapshot => this.snapshot;
   getServerSnapshot = (): LifecycleSnapshot => serverSnapshot;
@@ -37,12 +38,13 @@ export class LifecycleController {
     const { signal } = this.abortController;
 
     window.addEventListener('pageshow', (event) => {
+      if (event.persisted) this.restoringStartedAt = performance.now();
       this.publish({
         phase: event.persisted ? 'restoring' : 'visible',
         pageShowPersisted: event.persisted,
         lastVisibleAt: Date.now(),
       });
-      if (event.persisted) requestAnimationFrame(() => this.publish({ phase: 'visible' }));
+      if (event.persisted) requestAnimationFrame(() => this.publishVisibleAfterRestore('pageshow'));
     }, { signal });
     window.addEventListener('pagehide', () => {
       this.publish({ phase: 'hidden', lastHiddenAt: Date.now() });
@@ -51,8 +53,9 @@ export class LifecycleController {
       if (document.visibilityState === 'hidden') {
         this.publish({ phase: 'hidden', lastHiddenAt: Date.now() });
       } else {
+        this.restoringStartedAt = performance.now();
         this.publish({ phase: 'restoring', lastVisibleAt: Date.now() });
-        requestAnimationFrame(() => this.publish({ phase: 'visible' }));
+        requestAnimationFrame(() => this.publishVisibleAfterRestore('visibilitychange'));
       }
     }, { signal });
 
@@ -72,6 +75,17 @@ export class LifecycleController {
     this.snapshot = { ...this.snapshot, ...patch, revision: this.snapshot.revision + 1 };
     for (const listener of this.listeners) listener();
     emitRuntimeEvent('lifecycle-change', this.snapshot);
+  }
+
+  private publishVisibleAfterRestore(source: 'pageshow' | 'visibilitychange'): void {
+    this.publish({ phase: 'visible' });
+    if (this.restoringStartedAt !== null) {
+      emitRuntimeEvent('resume-duration', {
+        source,
+        durationMs: Math.max(0, performance.now() - this.restoringStartedAt),
+      });
+      this.restoringStartedAt = null;
+    }
   }
 }
 

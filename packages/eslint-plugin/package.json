@@ -15,6 +15,6 @@
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
   },
   "peerDependencies": {
-    "eslint": ">=9"
+    "eslint": ">=9 <11"
   }
 }

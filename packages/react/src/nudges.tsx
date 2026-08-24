@@ -8,7 +8,12 @@ import {
   useSyncExternalStore,
   type PropsWithChildren,
 } from 'react';
-import { getInstallController, type InstallInstructions, type InstallState } from '@homeframe/runtime';
+import {
+  emitRuntimeEvent,
+  getInstallController,
+  type InstallInstructions,
+  type InstallState,
+} from '@homeframe/runtime';
 import {
   createHttpPushSubscriptionTransport,
   decodeApplicationServerKey,
@@ -23,12 +28,21 @@ export interface NudgePolicy {
   minEngagedMs?: number;
   cooldownDays?: number;
   maxImpressions?: number;
+  routes?: string[];
+  requiresNetwork?: boolean;
+}
+
+export interface NudgeStorageAdapter {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
 }
 
 export interface HomeframeNudgeConfig {
   install?: NudgePolicy;
   notifications?: NudgePolicy;
   storageKeyPrefix?: string;
+  policyVersion?: string | number;
+  storage?: NudgeStorageAdapter;
 }
 
 interface NudgeRecord {
@@ -37,6 +51,7 @@ interface NudgeRecord {
   snoozedUntil: number | null;
   permanent: boolean;
   success: boolean;
+  policyVersion: string;
 }
 
 type NudgeKind = 'install' | 'notifications';
@@ -47,7 +62,9 @@ interface NudgeContextValue {
   engagedMs: number;
   records: Record<NudgeKind, NudgeRecord>;
   candidates: Record<NudgeKind, boolean>;
+  criticalTasks: readonly string[];
   setCandidate(kind: NudgeKind, value: boolean): void;
+  registerCriticalTask(name: string): () => void;
   eligible(kind: NudgeKind, policy?: NudgePolicy): boolean;
   impression(kind: NudgeKind): void;
   dismiss(kind: NudgeKind, permanent?: boolean): void;
@@ -55,12 +72,13 @@ interface NudgeContextValue {
   success(kind: NudgeKind): void;
 }
 
-const emptyRecord = (): NudgeRecord => ({
+const emptyRecord = (policyVersion = '1'): NudgeRecord => ({
   impressions: 0,
   lastShownAt: null,
   snoozedUntil: null,
   permanent: false,
   success: false,
+  policyVersion,
 });
 
 const NudgeContext = createContext<NudgeContextValue | null>(null);
@@ -69,33 +87,80 @@ export function HomeframeNudgeProvider({
   config = {},
   children,
 }: PropsWithChildren<{ config?: HomeframeNudgeConfig }>) {
-  const resolved = useMemo(() => ({ storageKeyPrefix: 'hf:nudges', ...config }), [config]);
+  const resolved = useMemo(() => ({
+    storageKeyPrefix: 'hf:nudges',
+    policyVersion: '1',
+    ...config,
+  }), [config]);
+  const policyVersion = String(resolved.policyVersion);
   const [sessions, setSessions] = useState(1);
   const [engagedMs, setEngagedMs] = useState(0);
   const [records, setRecords] = useState<Record<NudgeKind, NudgeRecord>>({
-    install: emptyRecord(),
-    notifications: emptyRecord(),
+    install: emptyRecord(policyVersion),
+    notifications: emptyRecord(policyVersion),
   });
   const [candidates, setCandidates] = useState<Record<NudgeKind, boolean>>({
     install: false,
     notifications: false,
   });
+  const [criticalTasks, setCriticalTasks] = useState<readonly string[]>([]);
+  const [, refreshPolicy] = useState(0);
+
+  useEffect(() => {
+    const refresh = () => refreshPolicy((value) => value + 1);
+    window.addEventListener('online', refresh);
+    window.addEventListener('offline', refresh);
+    window.addEventListener('homeframe:route-change', refresh);
+    window.addEventListener('homeframe:viewport-change', refresh);
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [
+        'data-hf-ready',
+        'data-hf-keyboard',
+        'data-hf-nudges',
+        'data-hf-modal',
+        'data-hf-prompt',
+        'data-hf-error',
+      ],
+    });
+    return () => {
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('offline', refresh);
+      window.removeEventListener('homeframe:route-change', refresh);
+      window.removeEventListener('homeframe:viewport-change', refresh);
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (criticalTasks.length > 0) {
+      document.documentElement.dataset.hfCriticalTask = String(criticalTasks.length);
+    } else {
+      delete document.documentElement.dataset.hfCriticalTask;
+      window.dispatchEvent(new Event('homeframe:update-safe-point'));
+    }
+    return () => {
+      delete document.documentElement.dataset.hfCriticalTask;
+    };
+  }, [criticalTasks.length]);
 
   useEffect(() => {
     const prefix = resolved.storageKeyPrefix;
     try {
       const todayKey = `${prefix}:session:${new Date().toISOString().slice(0, 10)}`;
-      const count = Number(localStorage.getItem(`${prefix}:sessions`) ?? '0');
+      const storage = resolved.storage ?? localStorage;
+      const count = Number(storage.getItem(`${prefix}:sessions`) ?? '0');
       const isNew = sessionStorage.getItem(todayKey) !== '1';
       const nextCount = isNew ? count + 1 : Math.max(1, count);
       if (isNew) {
         sessionStorage.setItem(todayKey, '1');
-        localStorage.setItem(`${prefix}:sessions`, String(nextCount));
+        storage.setItem(`${prefix}:sessions`, String(nextCount));
       }
       setSessions(nextCount);
       setRecords({
-        install: readRecord(`${prefix}:install`),
-        notifications: readRecord(`${prefix}:notifications`),
+        install: readRecord(storage, `${prefix}:install`, policyVersion),
+        notifications: readRecord(storage, `${prefix}:notifications`, policyVersion),
       });
     } catch {
       // Privacy modes may make storage unavailable.
@@ -125,46 +190,68 @@ export function HomeframeNudgeProvider({
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.clearInterval(timer);
     };
-  }, [resolved.storageKeyPrefix]);
+  }, [policyVersion, resolved.storage, resolved.storageKeyPrefix]);
 
   const write = useCallback((kind: NudgeKind, updater: (record: NudgeRecord) => NudgeRecord) => {
     setRecords((current) => {
       const next = { ...current, [kind]: updater(current[kind]) };
       try {
-        localStorage.setItem(`${resolved.storageKeyPrefix}:${kind}`, JSON.stringify(next[kind]));
+        (resolved.storage ?? localStorage).setItem(`${resolved.storageKeyPrefix}:${kind}`, JSON.stringify(next[kind]));
       } catch {
         // The record remains in memory.
       }
       return next;
     });
-  }, [resolved.storageKeyPrefix]);
+  }, [resolved.storage, resolved.storageKeyPrefix]);
 
   const setCandidate = useCallback((kind: NudgeKind, value: boolean) => {
     setCandidates((current) => current[kind] === value ? current : { ...current, [kind]: value });
   }, []);
 
-  const eligible = useCallback((kind: NudgeKind, policy: NudgePolicy = {}) => {
+  const baseEligible = useCallback((kind: NudgeKind, policy: NudgePolicy = {}) => {
     const defaults = kind === 'install'
-      ? { enabled: true, minSessions: 2, minEngagedMs: 30_000, cooldownDays: 7, maxImpressions: 3 }
-      : { enabled: true, minSessions: 2, minEngagedMs: 45_000, cooldownDays: 30, maxImpressions: 2 };
+      ? { enabled: true, minSessions: 2, minEngagedMs: 30_000, cooldownDays: 7, maxImpressions: 3, requiresNetwork: false }
+      : { enabled: true, minSessions: 2, minEngagedMs: 45_000, cooldownDays: 30, maxImpressions: 2, requiresNetwork: true };
     const resolvedPolicy = { ...defaults, ...policy };
     const record = records[kind];
     if (!resolvedPolicy.enabled || !candidates[kind] || record.permanent || record.success) return false;
     if (typeof document !== 'undefined' && (
       document.visibilityState !== 'visible'
+      || document.documentElement.dataset.hfReady !== 'true'
       || document.documentElement.dataset.hfKeyboard !== 'closed'
       || document.documentElement.dataset.hfNudges === 'suppress'
       || document.documentElement.dataset.hfModal === 'open'
-      || !navigator.onLine
+      || document.documentElement.dataset.hfPrompt === 'open'
+      || document.documentElement.dataset.hfError === 'true'
+      || criticalTasks.length > 0
+      || (resolvedPolicy.requiresNetwork && !navigator.onLine)
     )) return false;
+    const pathname = typeof location === 'undefined' ? '/' : location.pathname;
+    if (resolvedPolicy.routes?.length && !resolvedPolicy.routes.some((route) => routeMatches(pathname, route))) return false;
     if (sessions < resolvedPolicy.minSessions || engagedMs < resolvedPolicy.minEngagedMs) return false;
     if (record.impressions >= resolvedPolicy.maxImpressions) return false;
     if (record.snoozedUntil && record.snoozedUntil > Date.now()) return false;
     if (record.lastShownAt
       && Date.now() - record.lastShownAt < resolvedPolicy.cooldownDays * 86_400_000) return false;
-    if (kind === 'notifications' && candidates.install) return false;
     return true;
-  }, [candidates, engagedMs, records, sessions]);
+  }, [candidates, criticalTasks.length, engagedMs, records, sessions]);
+
+  const eligible = useCallback((kind: NudgeKind, policy: NudgePolicy = {}) => {
+    if (!baseEligible(kind, policy)) return false;
+    if (kind === 'notifications' && baseEligible('install', resolved.install)) return false;
+    return true;
+  }, [baseEligible, resolved.install]);
+
+  const registerCriticalTask = useCallback((name: string) => {
+    const token = `${name}:${crypto.randomUUID?.() ?? Math.random().toString(36)}`;
+    setCriticalTasks((current) => [...current, token]);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      setCriticalTasks((current) => current.filter((item) => item !== token));
+    };
+  }, []);
 
   const value = useMemo<NudgeContextValue>(() => ({
     config: resolved,
@@ -172,7 +259,9 @@ export function HomeframeNudgeProvider({
     engagedMs,
     records,
     candidates,
+    criticalTasks,
     setCandidate,
+    registerCriticalTask,
     eligible,
     impression: (kind) => write(kind, (record) => ({
       ...record,
@@ -191,18 +280,30 @@ export function HomeframeNudgeProvider({
       snoozedUntil: Date.now() + days * 86_400_000,
     })),
     success: (kind) => write(kind, (record) => ({ ...record, success: true })),
-  }), [candidates, eligible, engagedMs, records, resolved, sessions, setCandidate, write]);
+  }), [candidates, criticalTasks, eligible, engagedMs, records, registerCriticalTask, resolved, sessions, setCandidate, write]);
 
   return <NudgeContext.Provider value={value}>{children}</NudgeContext.Provider>;
 }
 
-function readRecord(key: string): NudgeRecord {
+function readRecord(storage: NudgeStorageAdapter, key: string, policyVersion: string): NudgeRecord {
   try {
-    const parsed = JSON.parse(localStorage.getItem(key) ?? 'null') as Partial<NudgeRecord> | null;
-    return { ...emptyRecord(), ...parsed };
+    const parsed = JSON.parse(storage.getItem(key) ?? 'null') as Partial<NudgeRecord> | null;
+    if (!parsed) return emptyRecord(policyVersion);
+    if (parsed.policyVersion !== policyVersion) {
+      return {
+        ...emptyRecord(policyVersion),
+        permanent: parsed.permanent ?? false,
+        success: parsed.success ?? false,
+      };
+    }
+    return { ...emptyRecord(policyVersion), ...parsed, policyVersion };
   } catch {
-    return emptyRecord();
+    return emptyRecord(policyVersion);
   }
+}
+
+function routeMatches(pathname: string, route: string): boolean {
+  return route.endsWith('*') ? pathname.startsWith(route.slice(0, -1)) : pathname === route;
 }
 
 export function useNudgeCoordinator() {
@@ -324,7 +425,11 @@ export function useNotificationCapability(): NotificationCapabilityResult {
         setState('error');
       });
     void reconcile();
-    const onRotation = () => void reconcile();
+    const onRotation = (event: Event) => {
+      const oldEndpoint = (event as CustomEvent<{ oldEndpoint?: string | null }>).detail?.oldEndpoint;
+      if (oldEndpoint) void transport?.remove(oldEndpoint).catch(() => undefined);
+      void reconcile();
+    };
     window.addEventListener('homeframe:push-subscription-change', onRotation);
     return () => {
       active = false;
@@ -334,6 +439,15 @@ export function useNotificationCapability(): NotificationCapabilityResult {
 
   const candidate = state === 'default' || state === 'granted-unsubscribed';
   useEffect(() => nudges.setCandidate('notifications', candidate), [candidate, nudges]);
+  useEffect(() => {
+    emitRuntimeEvent('notification-capability-change', {
+      state,
+      permission: supported ? Notification.permission : 'unsupported',
+      requiresInstall,
+      hasSubscription: Boolean(subscription),
+      error,
+    });
+  }, [error, requiresInstall, state, subscription, supported]);
 
   const requestAndSubscribe = useCallback(async () => {
     if (!supported || !notificationConfig || requiresInstall) return 'error' as const;
@@ -347,6 +461,7 @@ export function useNotificationCapability(): NotificationCapabilityResult {
       if (permission !== 'granted') {
         setState('denied');
         nudges.dismiss('notifications', true);
+        emitRuntimeEvent('notification-outcome', { outcome: 'denied' });
         return 'denied' as const;
       }
       const registration = await navigator.serviceWorker.ready;
@@ -362,10 +477,12 @@ export function useNotificationCapability(): NotificationCapabilityResult {
       setSubscription(next);
       setState('subscribed');
       nudges.success('notifications');
+      emitRuntimeEvent('notification-outcome', { outcome: 'subscribed' });
       return 'subscribed' as const;
     } catch (reason) {
       setError(errorMessage(reason));
       setState('error');
+      emitRuntimeEvent('notification-outcome', { outcome: 'error', error: errorMessage(reason) });
       return 'error' as const;
     }
   }, [notificationConfig, nudges, requiresInstall, supported, transport]);
@@ -377,6 +494,7 @@ export function useNotificationCapability(): NotificationCapabilityResult {
     await transport?.remove(endpoint);
     setSubscription(null);
     setState(Notification.permission === 'granted' ? 'granted-unsubscribed' : 'default');
+    emitRuntimeEvent('notification-outcome', { outcome: 'unsubscribed' });
   }, [subscription, transport]);
 
   const permission = supported ? Notification.permission : 'unsupported';

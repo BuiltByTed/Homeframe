@@ -8,6 +8,7 @@ import {
   HomeframeInput,
   HomeframeOfflineBoundary,
   HomeframeProvider,
+  HomeframeRecovery,
   HomeframeSelect,
   HomeframeTextarea,
   KeyboardDock,
@@ -35,7 +36,6 @@ import {
   useRouterSnapshot,
   type RouteMatch,
 } from '@homeframe/router';
-import pwa from 'virtual:homeframe/config';
 
 const cards = Array.from({ length: 30 }, (_, index) => ({
   id: index + 1,
@@ -50,26 +50,13 @@ const router = createHomeframeRouter([
   { id: 'detail', path: '/history/:id', element: (match) => <DetailPage match={match} /> },
   { id: 'pwa', path: '/pwa', element: <PwaPage /> },
   { id: 'settings', path: '/settings', element: <SettingsPage /> },
+  { id: 'recovery', path: '/__homeframe/recovery', element: <HomeframeRecovery title="Homeframe recovery" /> },
   { id: 'not-found', path: '*', element: <NotFoundPage /> },
 ]);
 
 export function App() {
   return (
-    <HomeframeProvider config={{
-      selection: 'controls-only',
-      snapshot: 'brand',
-      serviceWorker: pwa.serviceWorker,
-      notifications: {
-        ...(import.meta.env.VITE_VAPID_PUBLIC_KEY
-          ? { applicationServerKey: import.meta.env.VITE_VAPID_PUBLIC_KEY as string }
-          : {}),
-        transport: { endpoint: '/api/push/subscriptions' },
-      },
-      nudges: {
-        install: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
-        notifications: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
-      },
-    }}>
+    <HomeframeProvider>
       <HomeframeRouterProvider router={router}>
         <HomeframeErrorBoundary fallback={(error, retry) => (
           <AppViewport className="fatal-screen">
@@ -175,7 +162,7 @@ function OverviewPage() {
         <Metric label="Visual viewport" value={`${viewport.width.toFixed(0)} × ${viewport.height.toFixed(0)}`} />
         <Metric label="Safe area" value={`${viewport.safeArea.top}/${viewport.safeArea.right}/${viewport.safeArea.bottom}/${viewport.safeArea.left}`} />
         <Metric label="Lifecycle" value={lifecycle.phase} />
-        <Metric label="Build" value={pwa.buildId} />
+        <Metric label="Build" value={window.__HOMEFRAME_BUILD__?.buildId ?? 'development'} />
       </div>
       <h2>Test labs</h2>
       <div className="feature-list">

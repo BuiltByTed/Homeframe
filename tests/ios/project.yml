@@ -43,3 +43,5 @@ schemes:
       targets:
         - HomeframeSimulatorUITests
       gatherCoverageData: false
+      environmentVariables:
+        HOMEFRAME_TEST_URL: http://127.0.0.1:4180/

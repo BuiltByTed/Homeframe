@@ -1,6 +1,7 @@
 export * from './events.js';
 export * from './install.js';
 export * from './lifecycle.js';
+export * from './style-store.js';
 export * from './viewport.js';
 
 export interface HomeframeBuildInfo {
@@ -9,6 +10,9 @@ export interface HomeframeBuildInfo {
   backgroundColor: string;
   serviceWorkerUrl: string | null;
   serviceWorkerScope: string;
+  serviceWorkerConfig?: Record<string, unknown> | false;
+  reactConfig?: Record<string, unknown>;
+  routerConfig?: Record<string, unknown>;
 }
 
 declare global {
