@@ -118,6 +118,7 @@ test('button navigation starts the destination at the top while history restores
 });
 
 test('generated metadata and worker expose the required PWA contract', async ({ page, request }) => {
+  const html = await (await request.get('/')).text();
   const manifest = await (await request.get('/manifest.webmanifest')).json();
   expect(manifest).toMatchObject({ id: '/', start_url: '/', scope: '/', display: 'standalone' });
   expect(manifest.icons).toEqual(expect.arrayContaining([
@@ -128,6 +129,7 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   const worker = await (await request.get('/sw.js')).text();
   expect(worker).toContain('HF_UPDATE_READY');
   expect(worker).toContain('notificationclick');
+  expect(html).toContain('html,body{height:100vh;min-height:100vh');
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'light dark');
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('light');
