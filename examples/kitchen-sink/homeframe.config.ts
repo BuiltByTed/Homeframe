@@ -18,8 +18,7 @@ export default defineHomeframe({
     display: 'standalone',
     themeColor: '#dbeafe',
     themeColorDark: '#020617',
-    // iOS 26 paints a native standalone scene inset below the WebKit document.
-    // Match the dock surface so it continues behind the Home indicator.
+    // Match the shell surface in every native scene and launch/resume frame.
     backgroundColor: '#e8f0ff',
     backgroundColorDark: '#0b1429',
     colorScheme: 'system',

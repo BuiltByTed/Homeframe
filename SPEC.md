@@ -303,7 +303,15 @@ The critical stylesheet MUST establish the equivalent of:
 
 ```css
 html,
-body,
+body {
+  width: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--hf-app-background);
+}
+
 #homeframe-root {
   width: 100%;
   height: 100%;
@@ -330,6 +338,10 @@ body {
 
 Production CSS may differ, but these invariants MUST hold:
 
+- `html` and `body` are rooted in the large, keyboard-stable viewport rather
+  than a percentage-height containing block. In a translucent iOS standalone
+  scene, `height: 100%` can leave an unpainted strip at the physical bottom
+  equal to the top safe-area inset.
 - `window.scrollY` remains `0` during ordinary app use, focus, keyboard changes,
   route changes, and modal presentation.
 - The physical area outside safe content is still painted with the configured app
@@ -412,11 +424,17 @@ const visibleBottom = visualViewport.offsetTop + visualViewport.height;
 const keyboardHeight = Math.max(0, stableHeight - visibleBottom);
 ```
 
-The frame origin follows `visualViewport.offsetLeft/offsetTop`; its dimensions
-follow `visualViewport.width/height`. This compensates for browser panning without
-changing the document scroll position. Implementations MUST clamp transient
-negative or overlarge values and preserve the last stable snapshot rather than
-publish invalid geometry.
+The measured visual rectangle follows `visualViewport.offsetLeft/offsetTop` and
+`visualViewport.width/height`. Browser-mode controls may use that rectangle to
+remain inside browser chrome. An installed app MUST NOT move or resize the shell
+or header to follow transient visual-viewport offsets during keyboard focus.
+Instead, it keeps one stable physical shell rectangle, captures the internal
+scroller position before focus, restores document scroll to zero, and counters
+any independent `visualViewport.pageTop` layout pan during a bounded keyboard
+settlement window. Only the avoid dock and keyboard occlusion mask consume the
+keyboard rectangle. Implementations MUST clamp transient negative or overlarge
+values and preserve the last stable snapshot rather than publish invalid
+geometry.
 
 Visual-viewport inference MUST require both an editable focus target and a
 meaningful height reduction. The default meaningful reduction is the smaller of
@@ -476,14 +494,24 @@ bottom region MUST not live inside the scrolling element.
   elements as restoration roots;
 - account for safe-area and shell occupancy without app-authored spacer elements.
 
+For touch or pen activation of an inactive editable, Homeframe MUST intercept
+WebKit's native focus action at pointer/touch start, before its implicit reveal
+pan can begin. It MUST focus with `{ preventScroll: true }` only after the gesture
+resolves to a tap. A vertical drag that began on the editable MUST remain a
+scroll gesture in the nearest application scroller and MUST NOT focus it. The
+pre-focus scroll anchor MUST survive the subsequent `focusin` event, and bounded
+animation-frame corrections MUST preserve it while the keyboard settles.
+
 After keyboard geometry settles, Homeframe MAY scroll only the nearest declared
 scroll region by the minimum distance needed to reveal the focused control. It
 MUST never scroll the document to do so. Application code can opt out per control.
 
 ### 8.7 Header and dock policies
 
-`<AppHeader>` always occupies the top of the current visual viewport and includes
-the top safe inset by default. It MUST remain visible during keyboard transitions.
+`<AppHeader>` occupies the top of the stable installed-app shell and includes the
+top safe inset by default. It MUST remain visible and pixel-stable during keyboard
+transitions. In browser mode it remains inside the browser's usable visual
+viewport without preventing route content from painting beneath browser chrome.
 
 `<ViewportDock>` supports:
 
@@ -498,6 +526,10 @@ When the software keyboard is open, the default `--hf-effective-safe-bottom` is
 `0px` because the dock is adjacent to the keyboard, not the Home indicator. Apps
 MAY configure a design-system spacing value separately from the physical safe
 inset.
+
+The shell MUST paint an opaque, theme-matched occlusion layer over the portion of
+its stable rectangle owned by the software keyboard. Route content MUST NOT be
+visible behind the keyboard during opening, steady state, or closing.
 
 `<KeyboardDock>` is an alias optimized for composers and bottom search fields. It
 MUST provide `keyboard="avoid"` and accessible focus behavior by default.
