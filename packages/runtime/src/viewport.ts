@@ -302,7 +302,11 @@ export class ViewportController {
     document.addEventListener('focusin', (event) => {
       if (!isEditableElement(event.target)) return;
       this.focusedEditable = event.target;
-      this.captureKeyboardAnchor(event.target);
+      // A pointer/click guard captures the pre-focus position. WebKit may move
+      // the internal scroller synchronously during focus even with
+      // `preventScroll`; never replace that good anchor with the moved value.
+      // Programmatic focus still gets an anchor through this fallback.
+      if (!this.keyboardAnchor) this.captureKeyboardAnchor(event.target);
       this.beginKeyboardSettlement();
       this.auditFocusedElement(event.target);
       this.scheduleSettle();

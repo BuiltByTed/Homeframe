@@ -305,6 +305,35 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('does not overwrite the pre-focus scroll anchor after WebKit moves the scroller', async () => {
+    installViewport();
+    const controller = new ViewportController({
+      settleDelaysMs: [],
+      keyboardStabilizationMs: 50,
+    });
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    scroller.scrollTop = 120;
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    scroller.append(input);
+    shell.append(scroller);
+    document.body.append(shell);
+    input.addEventListener('focus', () => {
+      // Mirrors the synchronous focus reveal observed in installed iOS PWAs.
+      scroller.scrollTop = 400;
+    });
+    controller.start();
+
+    input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(scroller.scrollTop).toBe(120);
+    controller.stop();
+  });
+
   it('raises the editable-text minimum when the initial viewport is scaled down', async () => {
     const viewport = installViewport();
     viewport.scale = 0.75;
