@@ -67,13 +67,26 @@ describe('HomeframeRouter', () => {
     expect(history.length).toBe(nativeLength);
     expect(router.getSnapshot()).toMatchObject({
       direction: 'push',
+      scroll: 'reset',
       match: { params: { id: '2' } },
+    });
+
+    await router.navigate('/items/2?gallery=one', {
+      replace: true,
+      state: { galleryItem: 'one' },
+      preventScrollReset: true,
+    });
+    expect(router.getSnapshot()).toMatchObject({
+      direction: 'replace',
+      scroll: 'preserve',
+      state: { galleryItem: 'one' },
     });
 
     router.back();
     await Promise.resolve();
     expect(location.pathname).toBe('/items/1');
     expect(router.getSnapshot().direction).toBe('back');
+    expect(router.getSnapshot().scroll).toBe('restore');
     expect(router.getSnapshot().state).toEqual({ galleryItem: 'one' });
 
     router.forward();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import {
   AppScrollView,
   AppShell,
@@ -40,5 +40,27 @@ describe('React shell primitives', () => {
     expect(inlineStyle).toContain('font-size: max(var(--hf-input-min-font-size, 16px), 1rem)');
     expect(inlineStyle).toContain('color: red');
     expect(container.querySelector('[data-hf-selectable]')).toHaveTextContent('Copy me');
+  });
+
+  it('preserves a shared route scroller for URL-only modal replacements', () => {
+    const view = render(
+      <AppScrollView scrollKey="route-one" navigationType="push">
+        <div>Gallery</div>
+      </AppScrollView>,
+    );
+    const scroller = view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!;
+    scroller.scrollTop = 240;
+    fireEvent.scroll(scroller);
+
+    view.rerender(
+      <AppScrollView
+        scrollKey="route-one"
+        navigationType="replace"
+        scrollBehavior="preserve"
+      >
+        <div>Gallery modal open</div>
+      </AppScrollView>,
+    );
+    expect(scroller.scrollTop).toBe(240);
   });
 });

@@ -48,7 +48,11 @@ export function useNavigationDirection() {
 
 export function useRouteScrollRestoration() {
   const snapshot = useRouterSnapshot();
-  return { scrollKey: snapshot.key, direction: snapshot.direction };
+  return {
+    scrollKey: snapshot.key,
+    direction: snapshot.direction,
+    scrollBehavior: snapshot.scroll,
+  };
 }
 
 export function useNavigate() {

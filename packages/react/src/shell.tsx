@@ -129,6 +129,7 @@ export interface AppScrollViewHandle {
 export interface AppScrollViewProps extends HTMLAttributes<HTMLDivElement> {
   scrollKey?: string;
   navigationType?: 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
+  scrollBehavior?: 'reset' | 'restore' | 'preserve';
   revealFocusedControl?: boolean;
 }
 
@@ -138,6 +139,7 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
   function AppScrollView({
     scrollKey,
     navigationType = 'unknown',
+    scrollBehavior,
     revealFocusedControl = true,
     onScroll,
     ...props
@@ -157,11 +159,12 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       // already have clamped the shared scroller and would corrupt restoration.
       activeScrollKey.current = scrollKey;
       if (!scrollKey || !ref.current) return;
-      const restoresHistoryEntry = navigationType === 'back'
+      const action = scrollBehavior ?? (navigationType === 'back'
         || navigationType === 'forward'
-        || navigationType === 'reload';
-      ref.current.scrollTop = restoresHistoryEntry ? scrollPositions.get(scrollKey) ?? 0 : 0;
-    }, [navigationType, scrollKey]);
+        || navigationType === 'reload' ? 'restore' : 'reset');
+      if (action === 'preserve') return;
+      ref.current.scrollTop = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
+    }, [navigationType, scrollBehavior, scrollKey]);
 
     useEffect(() => () => {
       const key = activeScrollKey.current;

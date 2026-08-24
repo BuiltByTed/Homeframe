@@ -119,9 +119,13 @@ The built-in router uses real anchors and History API entries in browsers and de
 
 ```tsx
 const route = useRouterSnapshot();
-const { scrollKey, direction } = useRouteScrollRestoration();
+const { scrollKey, direction, scrollBehavior } = useRouteScrollRestoration();
 
-<AppScrollView scrollKey={scrollKey} navigationType={direction}>
+<AppScrollView
+  scrollKey={scrollKey}
+  navigationType={direction}
+  scrollBehavior={scrollBehavior}
+>
   <RouterOutlet />
 </AppScrollView>
 ```
@@ -129,6 +133,8 @@ const { scrollKey, direction } = useRouteScrollRestoration();
 Use `Link` for semantic navigation and `navigate()` for app buttons. Do not call `location.href` for same-origin in-scope routes. Ordinary push/replace navigation starts the destination at `scrollTop = 0`; popstate Back/Forward restores the saved entry.
 
 `useRouterSnapshot()` exposes the current `url`, route `state`, matched params/data, history key, and direction. This supports query-driven screens and lightweight navigation-state hints without reaching into `window.history.state`.
+
+For a URL-only modal or sheet update, pass `{ replace: true, preventScrollReset: true }` to `navigate`. The router marks that transition as `scrollBehavior: 'preserve'`; ordinary pushes and replaces continue to reset to the top.
 
 Configure the origin server to rewrite known in-scope document routes to `index.html`. Exclude APIs, asset-like paths, the worker, and recovery endpoints. Test direct loading while online before enabling offline fallback.
 

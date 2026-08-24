@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { getBuildInfo } from '@homeframe/runtime';
 
 export type NavigationDirection = 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
+export type RouteScrollAction = 'reset' | 'restore' | 'preserve';
 
 export interface RouteLoaderArgs {
   url: URL;
@@ -32,6 +33,7 @@ export interface RouterSnapshot {
   key: string;
   index: number;
   direction: NavigationDirection;
+  scroll: RouteScrollAction;
   status: 'idle' | 'loading' | 'error' | 'not-found';
   match: RouteMatch | null;
   error: unknown;
@@ -41,6 +43,7 @@ export interface RouterSnapshot {
 export interface NavigateOptions {
   replace?: boolean;
   state?: unknown;
+  preventScrollReset?: boolean;
 }
 
 export interface HomeframeRouterOptions {
@@ -184,6 +187,7 @@ export class HomeframeRouter {
       key: 'server',
       index: 0,
       direction: 'reload',
+      scroll: 'restore',
       status: 'loading',
       match: matchRoute(routes, url.pathname),
       error: null,
@@ -229,6 +233,7 @@ export class HomeframeRouter {
       key: entry.key,
       index: entry.index,
       direction: 'reload',
+      scroll: 'restore',
     };
 
     window.addEventListener('popstate', (event) => {
@@ -251,6 +256,7 @@ export class HomeframeRouter {
         nextIndex,
         direction,
         next?.userState,
+        'restore',
       );
     }, { signal });
 
@@ -263,6 +269,7 @@ export class HomeframeRouter {
           pageState.__homeframe?.index ?? this.snapshot.index,
           'reload',
           pageState.__homeframe?.userState,
+          'restore',
         );
       }
     }, { signal });
@@ -272,7 +279,14 @@ export class HomeframeRouter {
       void this.navigate(route);
     }, { signal });
 
-    void this.resolve(this.snapshot.url, entry.key, entry.index, 'reload', entry.userState);
+    void this.resolve(
+      this.snapshot.url,
+      entry.key,
+      entry.index,
+      'reload',
+      entry.userState,
+      'restore',
+    );
     return () => this.stop();
   }
 
@@ -331,6 +345,7 @@ export class HomeframeRouter {
       nextEntry.index,
       options.replace ? 'replace' : 'push',
       nextEntry.userState,
+      options.preventScrollReset ? 'preserve' : 'reset',
     );
   }
 
@@ -381,6 +396,7 @@ export class HomeframeRouter {
       target.entry.index,
       direction,
       target.entry.userState,
+      'restore',
     );
   }
 
@@ -583,23 +599,24 @@ export class HomeframeRouter {
     index: number,
     direction: NavigationDirection,
     state: unknown,
+    scroll: RouteScrollAction,
   ): Promise<void> {
     const id = ++this.navigationId;
     this.loaderAbort?.abort();
     this.loaderAbort = new AbortController();
     const match = matchRoute(this.routes, url.pathname);
     if (!match) {
-      this.publish({ url, state, key, index, direction, status: 'not-found', match: null, error: null });
+      this.publish({ url, state, key, index, direction, scroll, status: 'not-found', match: null, error: null });
       return;
     }
     const cached = this.dataCache.get(url.href);
     const hasCached = this.dataCache.has(url.href);
     if (hasCached) match.data = cached;
     if (!match.route.loader || hasCached) {
-      this.publish({ url, state, key, index, direction, status: 'idle', match, error: null });
+      this.publish({ url, state, key, index, direction, scroll, status: 'idle', match, error: null });
       return;
     }
-    this.publish({ url, state, key, index, direction, status: 'loading', match, error: null });
+    this.publish({ url, state, key, index, direction, scroll, status: 'loading', match, error: null });
     try {
       const data = await match.route.loader({
         url,
@@ -615,13 +632,14 @@ export class HomeframeRouter {
         key,
         index,
         direction,
+        scroll,
         status: 'idle',
         match: { ...match, data },
         error: null,
       });
     } catch (error) {
       if (id !== this.navigationId || this.loaderAbort.signal.aborted) return;
-      this.publish({ url, state, key, index, direction, status: 'error', match, error });
+      this.publish({ url, state, key, index, direction, scroll, status: 'error', match, error });
     }
   }
 
