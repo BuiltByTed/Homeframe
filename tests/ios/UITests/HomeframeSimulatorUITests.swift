@@ -16,9 +16,7 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertEqual(window.height, 874, accuracy: 1)
         XCTAssertTrue(appTitle.frame.minY >= window.minY)
         XCTAssertTrue(webApp.otherElements["main"].exists)
-        let bottomLink = webApp.links
-            .matching(NSPredicate(format: "label CONTAINS 'PWA'"))
-            .firstMatch
+        let bottomLink = webApp.links["◉ PWA"]
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 10))
         XCTAssertLessThanOrEqual(bottomLink.frame.maxY, window.maxY - 24)
         XCTAssertGreaterThan(bottomLink.frame.maxY, window.maxY - 50)
@@ -68,9 +66,10 @@ final class HomeframeSimulatorUITests: XCTestCase {
         ]
         XCTAssertTrue(routeAnchor.waitForExistence(timeout: 5))
         let routeAnchorY = routeAnchor.frame.minY
+        let sceneOrigin = webApp.windows.firstMatch.frame.maxY
+            - (try contractNumber(named: "visual bottom", from: contract.label))
         tapCenter(of: textField, in: webApp)
         let composer = webApp.textFields["Persistent composer"]
-        let sceneOrigin = webApp.otherElements["banner"].frame.minY
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
         XCTAssertTrue(waitUntil(timeout: 10) {
             !contract.label.contains("closed") && contract.label.contains("document scroll 0")

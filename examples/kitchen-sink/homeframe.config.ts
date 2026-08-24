@@ -51,10 +51,11 @@ export default defineHomeframe({
     edgeNavigation: { edgeWidth: 24, commitDistance: 88 },
   },
   nudges: {
-    // v2 clears the one-frame impressions recorded by the original demo
-    // before the live-impression latch was fixed.
-    policyVersion: 2,
-    install: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
+    // The kitchen sink deliberately re-presents the install education on each
+    // fresh browser visit until it is dismissed; production apps can use a
+    // longer cooldown. v3 clears the earlier demo cooldown record.
+    policyVersion: 3,
+    install: { minSessions: 1, minEngagedMs: 0, cooldownDays: 0, maxImpressions: 50 },
     notifications: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
   },
   diagnostics: { queryParameter: 'homeframe-debug' },
