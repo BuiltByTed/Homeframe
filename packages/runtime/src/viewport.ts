@@ -137,6 +137,9 @@ export class ViewportController {
   private keyboardSettling = false;
   private userOwnsKeyboardScroll = false;
   private correctingKeyboardScroll = false;
+  /** Native points exposed by an edge-to-edge standalone scene but omitted
+   * from WebKit's closed visual/layout viewport. */
+  private installedFrameInset = 0;
 
   constructor(options: ViewportRuntimeOptions = {}) {
     this.options = {
@@ -390,6 +393,7 @@ export class ViewportController {
     this.keyboardAnchor = null;
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
+    this.installedFrameInset = 0;
   }
 
   scheduleSettle(): void {
@@ -413,6 +417,7 @@ export class ViewportController {
 
   private invalidateStableSize(): void {
     this.snapshot = { ...this.snapshot, stableHeight: 0, stableWidth: 0 };
+    this.installedFrameInset = 0;
     this.stableSamples = 0;
     this.lastCandidate = null;
     this.scheduleSettle();
@@ -474,17 +479,34 @@ export class ViewportController {
     return (navigator as NavigatorWithVirtualKeyboard).standalone === true;
   }
 
-  private physicalViewportHeight(layoutHeight: number): number {
+  private layoutViewportHeight(layoutHeight: number): number {
+    return Math.max(layoutHeight, finite(window.innerHeight, layoutHeight));
+  }
+
+  private detectInstalledFrameInset(layoutHeight: number, safeAreaTop: number): number {
     /*
      * `screen.height` includes native UI that may sit outside the standalone
      * WebView. With an opaque iOS status bar, for example, a 874pt screen owns
      * an 812pt layout viewport. Using the screen height makes the shell 62px
      * too tall, pushes its dock offscreen, and prevents keyboard close
-     * detection from ever matching the restored visual viewport. The closed
-     * layout viewport is the physical application frame; once captured in
-     * stableHeight it remains fixed while the keyboard animates.
+     * detection from ever matching the restored visual viewport.
+     *
+     * A `black-translucent` Home Screen app has the inverse WebKit quirk on
+     * current iOS: the app surface begins at physical y=0, but the closed
+     * layout viewport can remain shorter than the scene by exactly the top
+     * safe-area inset. Only that measured equality authorizes use of the
+     * larger screen height. This adapts to every iPhone safe area without
+     * treating an opaque native status bar as app-owned space.
      */
-    return Math.max(layoutHeight, finite(window.innerHeight, layoutHeight));
+    if (!this.isIosStandalone() || safeAreaTop <= 0) return 0;
+    const layoutFrameHeight = this.layoutViewportHeight(layoutHeight);
+    const screenHeight = finite(window.screen.height, layoutFrameHeight);
+    const missingHeight = screenHeight - layoutFrameHeight;
+    const tolerance = Math.max(1, safeAreaTop * 0.08);
+    return missingHeight > 0
+      && Math.abs(missingHeight - safeAreaTop) <= tolerance
+      ? missingHeight
+      : 0;
   }
 
   private readPageTop(layoutHeight?: number): number {
@@ -586,6 +608,7 @@ export class ViewportController {
     // transient visible rectangle.
     const orientation = layoutWidth > layoutHeight ? 'landscape' as const : 'portrait' as const;
     const displayMode = detectDisplayMode();
+    const rawSafeArea = this.readSafeArea();
 
     let stableWidth = this.snapshot.stableWidth;
     let stableHeight = this.snapshot.stableHeight;
@@ -596,14 +619,23 @@ export class ViewportController {
       stableHeight = 0;
       this.stableSamples = 0;
       this.lastCandidate = null;
+      this.installedFrameInset = 0;
     }
+    this.installedFrameInset = Math.max(
+      this.installedFrameInset,
+      this.detectInstalledFrameInset(layoutHeight, rawSafeArea.top),
+    );
+    const physicalFrameHeight = this.layoutViewportHeight(layoutHeight)
+      + this.installedFrameInset;
     if (!stableWidth || !stableHeight) {
       stableWidth = Math.max(layoutWidth, width);
-      stableHeight = Math.max(this.physicalViewportHeight(layoutHeight), height + y);
+      stableHeight = Math.max(physicalFrameHeight, height + y);
     }
 
     const virtualKeyboardHeight = Math.min(this.readVirtualKeyboardHeight(), stableHeight);
+    const closedVisualBottom = Math.max(1, stableHeight - this.installedFrameInset);
     const visualKeyboardHeight = Math.max(0, stableHeight - (height + y));
+    const visualKeyboardReduction = Math.max(0, closedVisualBottom - (height + y));
     const threshold = Math.min(
       this.options.keyboardThresholdPx,
       stableHeight * this.options.keyboardThresholdRatio,
@@ -611,7 +643,7 @@ export class ViewportController {
     const previousOpen = this.snapshot.keyboard.phase === 'open'
       || this.snapshot.keyboard.phase === 'opening';
     const previousActive = this.snapshot.keyboard.phase !== 'closed';
-    const meaningfulVisualReduction = visualKeyboardHeight >= threshold && scale <= 1.01;
+    const meaningfulVisualReduction = visualKeyboardReduction >= threshold && scale <= 1.01;
     const inferredOpen = Boolean(this.focusedEditable)
       && meaningfulVisualReduction;
     // After blur, WebKit can retain the old visual viewport for several frames.
@@ -639,17 +671,16 @@ export class ViewportController {
       keyboardPhase = previousOpen || this.snapshot.keyboard.phase === 'closing'
         ? 'closing'
         : 'closed';
-      if (keyboardPhase === 'closing' && closeEnough(height + y, stableHeight)) {
+      if (keyboardPhase === 'closing' && closeEnough(height + y, closedVisualBottom)) {
         keyboardPhase = 'closed';
       }
     }
 
     if (keyboardPhase === 'closed' && scale <= 1.01) {
       stableWidth = Math.max(width + x, layoutWidth);
-      stableHeight = Math.max(height + y, this.physicalViewportHeight(layoutHeight));
+      stableHeight = Math.max(height + y + this.installedFrameInset, physicalFrameHeight);
     }
 
-    const rawSafeArea = this.readSafeArea();
     const candidate = {
       width,
       height,
@@ -690,7 +721,7 @@ export class ViewportController {
       candidate.keyboard.phase = 'open';
     } else if (keyboardPhase === 'closing'
       && keyboardHeight === 0
-      && closeEnough(height + y, stableHeight)
+      && closeEnough(height + y, stableHeight - this.installedFrameInset)
       && this.stableSamples >= 1) {
       candidate.keyboard.phase = 'closed';
     }

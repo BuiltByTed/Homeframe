@@ -21,6 +21,7 @@ final class HomeframeSimulatorUITests: XCTestCase {
             .firstMatch
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 10))
         XCTAssertLessThanOrEqual(bottomLink.frame.maxY, window.maxY - 24)
+        XCTAssertGreaterThan(bottomLink.frame.maxY, window.maxY - 50)
         XCTAssertGreaterThan(bottomLink.frame.minY, window.maxY - 130)
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -224,6 +225,35 @@ final class HomeframeSimulatorUITests: XCTestCase {
     }
 
     @MainActor
+    func testStandaloneDarkAppearancePaintsTheSystemTopSurface() throws {
+        let webApp = try launchHomeframe()
+        let settings = webApp.links["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 15))
+        tapCenter(of: settings, in: webApp)
+
+        let appearance = webApp.otherElements["Appearance"]
+        XCTAssertTrue(appearance.waitForExistence(timeout: 10))
+        if (appearance.value as? String) != "Dark" {
+            appearance.tap()
+            let dark = webApp.buttons["Dark"]
+            XCTAssertTrue(dark.waitForExistence(timeout: 10))
+            dark.tap()
+        }
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            (webApp.otherElements["Appearance"].value as? String) == "Dark"
+        })
+        XCTAssertTrue(webApp.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS 'dark appearance'"))
+            .firstMatch
+            .exists)
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "Homeframe Standalone Dark Appearance"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     func testSafariBrowserModeKeepsInteractiveControlsClearOfBrowserChrome() throws {
         let host = XCUIApplication()
         host.launchEnvironment["HOMEFRAME_TEST_URL"] = ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]
@@ -243,6 +273,10 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertTrue(header.waitForExistence(timeout: 15))
         XCTAssertTrue(main.waitForExistence(timeout: 15))
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 15))
+        XCTAssertTrue(safari.staticTexts["Install Homeframe as an app"].waitForExistence(timeout: 15))
+        XCTAssertTrue(safari.staticTexts[
+            "Use Share, then Add to Home Screen for the full iPhone PWA experience."
+        ].exists)
 
         let window = safari.windows.firstMatch.frame
         XCTAssertGreaterThan(header.frame.minY, window.minY)

@@ -18,6 +18,22 @@ function installViewport(): MockVisualViewport {
   return viewport;
 }
 
+function mockSafeAreaTop(top: number) {
+  const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+  return vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudoElement) => {
+    const styles = nativeGetComputedStyle(element, pseudoElement);
+    if (!(element instanceof HTMLElement) || element.dataset.hfSafeAreaProbe === undefined) {
+      return styles;
+    }
+    return new Proxy(styles, {
+      get(target, property, receiver) {
+        if (property === 'paddingTop') return `${top}px`;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+  });
+}
+
 describe('ViewportController', () => {
   it('publishes stable viewport geometry and CSS variables before React needs it', async () => {
     installViewport();
@@ -132,6 +148,65 @@ describe('ViewportController', () => {
     expect(controller.getSnapshot().stableHeight).toBe(appHeight);
     expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe(`${appHeight}px`);
     controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it.each([
+    { appHeight: 647, screenHeight: 667, safeTop: 20 },
+    { appHeight: 790, screenHeight: 852, safeTop: 62 },
+    { appHeight: 812, screenHeight: 874, safeTop: 62 },
+    { appHeight: 870, screenHeight: 932, safeTop: 62 },
+  ])('fills a measured $screenHeight px translucent scene from a $appHeight px WebKit viewport', ({ appHeight, screenHeight, safeTop }) => {
+    const viewport = installViewport();
+    viewport.height = appHeight;
+    Object.defineProperty(window, 'innerHeight', { value: appHeight, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: screenHeight, configurable: true });
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const safeArea = mockSafeAreaTop(safeTop);
+    const controller = new ViewportController({ settleDelaysMs: [] });
+    controller.start();
+
+    expect(controller.getSnapshot().stableHeight).toBe(screenHeight);
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe(`${screenHeight}px`);
+    controller.stop();
+    safeArea.mockRestore();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it('closes the keyboard against a translucent scene’s measured WebKit baseline', async () => {
+    const viewport = installViewport();
+    viewport.height = 812;
+    Object.defineProperty(window, 'innerHeight', { value: 812, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 874, configurable: true });
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const safeArea = mockSafeAreaTop(62);
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    controller.start();
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    document.body.append(input);
+    input.focus();
+    viewport.height = 409;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.getSnapshot()).toMatchObject({
+      stableHeight: 874,
+      keyboard: { phase: 'open', height: 465 },
+    });
+
+    input.blur();
+    viewport.height = 812;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.getSnapshot()).toMatchObject({
+      stableHeight: 874,
+      keyboard: { phase: 'closed', height: 0 },
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('874px');
+    controller.stop();
+    safeArea.mockRestore();
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
     Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
   });
