@@ -46,12 +46,13 @@ Use one instance of each root provider and viewport. A route renders inside the
 existing `RouterOutlet`; it does not mount another viewport, manipulate the
 document, or create an independent global scroller.
 
-There must also be exactly one `AppShell` and one primary `AppScrollView`, both
-mounted above `RouterOutlet`. Their DOM identity—and the header DOM identity—must
-survive every same-document route change. A route-local `PageFrame` that mounts
-its own `AppShell` is not a harmless abstraction: it tears down the safe-area
-backing and scroll owner between routes, allowing iOS to expose its transient
-blur/snapshot layer.
+There must also be exactly one persistent `AppShell` above `RouterOutlet` and one
+active primary `AppScrollView` inside that shell around the outlet. The scroller
+may be keyed by route when route-scoped restoration requires a fresh node. The
+shell and header DOM identity must survive every same-document route change. A
+route-local `PageFrame` that mounts its own `AppShell` is not a harmless
+abstraction: it tears down the safe-area backing between routes, allowing iOS to
+expose its transient blur/snapshot layer.
 
 Do not do this:
 
@@ -225,10 +226,11 @@ close. `window.scrollY` must always be zero.
 Record a cold Home Screen launch and inspect it frame by frame. The generated
 native startup logo and HTML splash logo must use the same full-screen center; no
 intermediate frame may move the logo toward or away from a safe area. Across route
-navigation, verify that the header node remains the same node, its safe-area
-backing is opaque, and both computed backdrop-filter properties are `none`. While
-the keyboard is open, drag the longest thread/form in both directions and reject
-any frame that reverses or oscillates after the finger movement.
+navigation, verify that the shell and header remain the same nodes, exactly one
+primary scroller is active, the header's safe-area backing is opaque, and both
+computed backdrop-filter properties are `none`. While the keyboard is open, drag
+the longest thread/form in both directions and reject any frame that reverses or
+oscillates after the finger movement.
 
 ## 11. Release and rollback
 

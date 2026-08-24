@@ -46,10 +46,10 @@ describe('scaffold-homeframe-app', () => {
     expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).toContain('name: "Ted & Co"');
     const agentContract = await readFile(join(target, 'AGENTS.md'), 'utf8');
     const runbook = await readFile(join(target, 'docs/HOMEFRAME_RUNBOOK.md'), 'utf8');
-    expect(agentContract).toContain('Mount `AppShell` and `AppScrollView` above `RouterOutlet`');
+    expect(agentContract).toContain('Mount `AppShell` above `RouterOutlet`');
+    expect(agentContract).toContain('it may be keyed by route for scroll');
     expect(agentContract).toContain('scroll a long route/thread while the keyboard is open');
-    expect(runbook).toContain('A route-local `PageFrame` that mounts');
-    expect(runbook).toContain('its own `AppShell` is not a harmless abstraction');
+    expect(runbook).toContain('route-local `PageFrame` that mounts its own `AppShell`');
     expect(runbook).toContain('Record separate native iPhone Simulator videos');
     expect(runbook).toContain("`splash.title: ''` intentionally");
     expect(runbook).toContain('generates no title element');
