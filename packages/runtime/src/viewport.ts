@@ -53,6 +53,15 @@ interface NavigatorWithVirtualKeyboard extends Navigator {
   standalone?: boolean;
 }
 
+interface EditableScrollDrag {
+  identifier: number;
+  startX: number;
+  startY: number;
+  startScrollTop: number;
+  scroller: HTMLElement;
+  dragging: boolean;
+}
+
 const defaultViewport: HomeframeViewportSnapshot = {
   width: 0,
   height: 0,
@@ -107,6 +116,7 @@ export class ViewportController {
   private stableSamples = 0;
   private lastCandidate: Omit<HomeframeViewportSnapshot, 'revision'> | null = null;
   private focusedEditable: HTMLElement | null = null;
+  private editableScrollDrag: EditableScrollDrag | null = null;
 
   constructor(options: ViewportRuntimeOptions = {}) {
     this.options = {
@@ -159,6 +169,54 @@ export class ViewportController {
     const virtualKeyboard = (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard;
     virtualKeyboard?.addEventListener('geometrychange', schedule, { signal });
 
+    // Inputs placed in a bottom dock are intentionally outside the route's
+    // scroll view. WebKit consequently consumes a drag that begins on the
+    // input without scrolling anything. Transfer a vertical touch gesture to
+    // the shell's content scroller, while preserving ordinary taps and native
+    // scrolling for editables that already live inside a scroll view.
+    document.addEventListener('touchstart', (event) => {
+      if (!isEditableElement(event.target) || event.touches.length !== 1) return;
+      if (event.target.closest('[data-hf-scroll-view]')) return;
+      const shell = event.target.closest<HTMLElement>('[data-hf-shell]');
+      const scroller = shell?.querySelector<HTMLElement>('[data-hf-scroll-view]');
+      const touch = event.touches[0];
+      if (!scroller || !touch || scroller.scrollHeight <= scroller.clientHeight) return;
+      this.editableScrollDrag = {
+        identifier: touch.identifier,
+        startX: touch.clientX,
+        startY: touch.clientY,
+        startScrollTop: scroller.scrollTop,
+        scroller,
+        dragging: false,
+      };
+    }, { signal, capture: true, passive: true });
+
+    document.addEventListener('touchmove', (event) => {
+      const drag = this.editableScrollDrag;
+      if (!drag) return;
+      const touch = [...event.touches].find(candidate => candidate.identifier === drag.identifier);
+      if (!touch) return;
+      const deltaX = touch.clientX - drag.startX;
+      const deltaY = touch.clientY - drag.startY;
+      if (!drag.dragging) {
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 8) {
+          this.editableScrollDrag = null;
+          return;
+        }
+        if (Math.abs(deltaY) <= 8) return;
+        drag.dragging = true;
+      }
+      event.preventDefault();
+      drag.scroller.scrollTop = drag.startScrollTop - deltaY;
+      drag.scroller.dispatchEvent(new Event('scroll'));
+    }, { signal, capture: true, passive: false });
+
+    const finishEditableScrollDrag = () => {
+      this.editableScrollDrag = null;
+    };
+    document.addEventListener('touchend', finishEditableScrollDrag, { signal, capture: true });
+    document.addEventListener('touchcancel', finishEditableScrollDrag, { signal, capture: true });
+
     // A click is emitted for an intentional tap but suppressed after a scroll
     // gesture. Focusing here (before WebKit's default click action) prevents
     // its layout-viewport pan without making fields grab focus on touch-down.
@@ -170,7 +228,7 @@ export class ViewportController {
       if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
         window.scrollTo(scrollX, scrollY);
       }
-    }, { signal, capture: true, passive: true });
+    }, { signal, capture: true });
 
     document.addEventListener('focusin', (event) => {
       if (!isEditableElement(event.target)) return;
@@ -208,6 +266,7 @@ export class ViewportController {
     this.settleTimers.clear();
     this.safeAreaProbe?.remove();
     this.safeAreaProbe = null;
+    this.editableScrollDrag = null;
   }
 
   scheduleSettle(): void {

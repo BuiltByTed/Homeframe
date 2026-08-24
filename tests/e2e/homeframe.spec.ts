@@ -1,4 +1,21 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function verticalTouchDrag(page: Page, selector: string) {
+  const target = page.locator(selector);
+  const box = await target.boundingBox();
+  const cdp = await page.context().newCDPSession(page);
+  const x = box!.x + box!.width / 2;
+  const y = box!.y + box!.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  for (let step = 1; step <= 8; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: y - step * 25 }],
+    });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.detach();
+}
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/?e2e=1');
@@ -42,6 +59,16 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
   await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
   await page.getByPlaceholder('Persistent bottom composer').fill('survives');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
+});
+
+test('a vertical drag beginning on a dock input scrolls content without focusing it', async ({ page }) => {
+  await page.locator('.bottom-nav').getByRole('link', { name: /Keyboard/ }).click();
+  const composer = page.getByPlaceholder('Persistent bottom composer');
+  await verticalTouchDrag(page, 'input[placeholder="Persistent bottom composer"]');
+  await expect(composer).not.toBeFocused();
+  await expect.poll(() => page.locator('[data-hf-scroll-view]').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await composer.click();
+  await expect(composer).toBeFocused();
 });
 
 test('navigates through real history without reloading the shell and restores scroll', async ({ page }) => {
