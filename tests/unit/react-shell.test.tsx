@@ -82,6 +82,28 @@ describe('React shell primitives', () => {
     expect(scroller.scrollTop).toBe(240);
   });
 
+  it('restores scroll when route-scoped scroll views unmount and remount', () => {
+    const view = render(
+      <AppScrollView key="one" scrollKey="remounted-route-one" navigationType="push">
+        <div>First route</div>
+      </AppScrollView>,
+    );
+    view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop = 275;
+
+    view.rerender(
+      <AppScrollView key="two" scrollKey="remounted-route-two" navigationType="push">
+        <div>Second route</div>
+      </AppScrollView>,
+    );
+    view.rerender(
+      <AppScrollView key="one-again" scrollKey="remounted-route-one" navigationType="back">
+        <div>First route restored</div>
+      </AppScrollView>,
+    );
+
+    expect(view.container.querySelector<HTMLElement>('[data-hf-scroll-view]')!.scrollTop).toBe(275);
+  });
+
   it('prioritizes only an actually eligible install nudge and releases notifications after permanent dismissal', async () => {
     render(
       <HomeframeNudgeProvider config={{

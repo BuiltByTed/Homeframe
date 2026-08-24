@@ -185,7 +185,10 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       ref.current.scrollTop = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
     }, [navigationType, scrollBehavior, scrollKey]);
 
-    useEffect(() => () => {
+    // Layout cleanup runs while React still has the outgoing DOM node attached
+    // to the ref. Passive cleanup runs after ref detachment, losing scrollTop
+    // when applications mount a separate AppScrollView for each route.
+    useLayoutEffect(() => () => {
       const key = activeScrollKey.current;
       if (key && ref.current) scrollPositions.set(key, ref.current.scrollTop);
     }, []);
