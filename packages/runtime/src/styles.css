@@ -223,6 +223,7 @@
     pointer-events: none;
     background: var(--hf-app-background);
     contain: strict;
+    isolation: isolate;
   }
 
   [data-hf-edge-preview='forward'] {
@@ -231,13 +232,18 @@
 
   [data-hf-edge-preview-content] {
     pointer-events: none !important;
-    transform: translate3d(var(--hf-edge-preview-offset, 0px), 0, 0);
+    contain: layout paint style;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
     will-change: transform;
   }
 
   [data-hf-edge-live] {
     z-index: 100;
-    transform: translate3d(var(--hf-edge-live-offset, 0px), 0, 0);
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
     will-change: transform;
   }
 
@@ -276,9 +282,12 @@
     border-radius: 50%;
     color: CanvasText;
     background: var(--hf-app-background);
-    opacity: var(--hf-edge-progress, 0);
+    opacity: 0;
     box-shadow: 0 8px 28px rgb(0 0 0 / 28%);
-    transform: translate3d(0, -50%, 0) scale(calc(.78 + var(--hf-edge-progress, 0) * .22));
+    transform: translate3d(0, -50%, 0) scale(.78);
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    will-change: opacity, transform;
   }
 
   [data-hf-edge-indicator]::before {

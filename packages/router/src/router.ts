@@ -84,10 +84,18 @@ interface EdgeGesture {
   startX: number;
   startY: number;
   delta: number;
+  pendingOffset: number;
+  frameRequest: number | null;
   claimed: boolean;
   targetPosition: number;
   live: HTMLElement;
   preview: HTMLElement;
+  previewContent: HTMLElement;
+  indicator: HTMLElement | null;
+  originalLiveTransform: string;
+  originalPreviewTransform: string;
+  originalIndicatorOpacity: string;
+  originalIndicatorTransform: string;
 }
 
 function newKey(): string {
@@ -315,7 +323,6 @@ export class HomeframeRouter {
     if (typeof document !== 'undefined') {
       delete document.documentElement.dataset.hfHistoryMode;
       delete document.documentElement.dataset.hfEdgeNavigation;
-      getHomeframeRootStyle().removeProperty('--hf-edge-progress');
     }
   }
 
@@ -458,6 +465,7 @@ export class HomeframeRouter {
     direction: 'back' | 'forward',
     startX: number,
     startY: number,
+    commitDistance: number,
   ): EdgeGesture | null {
     const targetPosition = direction === 'back'
       ? this.managedPosition - 1
@@ -474,44 +482,73 @@ export class HomeframeRouter {
     preview.dataset.hfEdgePreview = direction;
     preview.setAttribute('aria-hidden', 'true');
     preview.inert = true;
-    preview.append(snapshot.cloneNode(true));
+    // The destination is already a detached snapshot. Moving that node into
+    // the preview avoids a second deep clone and the associated style/image
+    // work at the start of every edge gesture.
+    preview.append(snapshot);
     (document.body ?? document.documentElement).append(preview);
     live.dataset.hfEdgeLive = '';
 
     const root = document.documentElement;
     root.dataset.hfEdgeNavigation = direction;
-    const style = getHomeframeRootStyle();
-    style.setProperty('--hf-edge-progress', '0');
-    style.setProperty('--hf-edge-live-offset', '0px');
-    style.setProperty(
-      '--hf-edge-preview-offset',
-      direction === 'back' ? `${window.innerWidth * -0.18}px` : `${window.innerWidth}px`,
-    );
-
-    return {
+    const indicator = this.edgeNavigationElement?.querySelector<HTMLElement>('[data-hf-edge-indicator]') ?? null;
+    const gesture: EdgeGesture = {
       direction,
       startX,
       startY,
       delta: 0,
+      pendingOffset: 0,
+      frameRequest: null,
       claimed: false,
       targetPosition,
       live,
       preview,
+      previewContent: snapshot,
+      indicator,
+      originalLiveTransform: live.style.transform,
+      originalPreviewTransform: snapshot.style.transform,
+      originalIndicatorOpacity: indicator?.style.opacity ?? '',
+      originalIndicatorTransform: indicator?.style.transform ?? '',
     };
+    this.applyEdgeOffset(gesture, 0, commitDistance);
+    return gesture;
   }
 
-  private setEdgeOffset(gesture: EdgeGesture, offset: number, commitDistance: number): void {
+  private applyEdgeOffset(gesture: EdgeGesture, offset: number, commitDistance: number): void {
     const width = Math.max(1, window.innerWidth);
     const clamped = Math.min(width, Math.max(0, offset));
-    const style = getHomeframeRootStyle();
-    style.setProperty('--hf-edge-progress', String(Math.min(1, clamped / commitDistance)));
+    const progress = Math.min(1, clamped / commitDistance);
+    let liveOffset: number;
+    let previewOffset: number;
     if (gesture.direction === 'back') {
-      style.setProperty('--hf-edge-live-offset', `${clamped}px`);
-      style.setProperty('--hf-edge-preview-offset', `${-0.18 * (width - clamped)}px`);
+      liveOffset = clamped;
+      previewOffset = -0.18 * (width - clamped);
     } else {
-      style.setProperty('--hf-edge-live-offset', `${clamped * -0.08}px`);
-      style.setProperty('--hf-edge-preview-offset', `${width - clamped}px`);
+      liveOffset = clamped * -0.08;
+      previewOffset = width - clamped;
     }
+    gesture.live.style.transform = `translate3d(${liveOffset}px, 0, 0)`;
+    gesture.previewContent.style.transform = `translate3d(${previewOffset}px, 0, 0)`;
+    if (gesture.indicator) {
+      gesture.indicator.style.opacity = String(progress);
+      gesture.indicator.style.transform = `translate3d(0, -50%, 0) scale(${0.78 + progress * 0.22})`;
+    }
+  }
+
+  private scheduleEdgeOffset(gesture: EdgeGesture, offset: number, commitDistance: number): void {
+    gesture.pendingOffset = offset;
+    if (gesture.frameRequest !== null) return;
+    gesture.frameRequest = window.requestAnimationFrame(() => {
+      gesture.frameRequest = null;
+      if (this.edgeGesture !== gesture) return;
+      this.applyEdgeOffset(gesture, gesture.pendingOffset, commitDistance);
+    });
+  }
+
+  private cancelEdgeFrame(gesture: EdgeGesture): void {
+    if (gesture.frameRequest === null) return;
+    window.cancelAnimationFrame(gesture.frameRequest);
+    gesture.frameRequest = null;
   }
 
   private async finishEdgeGesture(cancelled: boolean, commitDistance: number): Promise<void> {
@@ -525,8 +562,12 @@ export class HomeframeRouter {
       && gesture.delta >= commitDistance
       && canCommit;
 
+    this.cancelEdgeFrame(gesture);
+    this.applyEdgeOffset(gesture, gesture.pendingOffset, commitDistance);
     document.documentElement.dataset.hfEdgeSettling = shouldCommit ? 'commit' : 'cancel';
-    this.setEdgeOffset(gesture, shouldCommit ? window.innerWidth : 0, commitDistance);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    if (this.edgeGesture !== gesture) return;
+    this.applyEdgeOffset(gesture, shouldCommit ? window.innerWidth : 0, commitDistance);
     await new Promise<void>((resolve) => window.setTimeout(resolve, 190));
 
     if (this.edgeGesture !== gesture) return;
@@ -555,7 +596,12 @@ export class HomeframeRouter {
       const direction = guard?.dataset.hfEdgeGuard;
       if (direction !== 'back' && direction !== 'forward') return;
       if (this.edgeGesture) return;
-      this.edgeGesture = this.prepareEdgeGesture(direction, touch.clientX, touch.clientY);
+      this.edgeGesture = this.prepareEdgeGesture(
+        direction,
+        touch.clientX,
+        touch.clientY,
+        edgeNavigation.commitDistance,
+      );
     }, { capture: true, passive: true, signal });
 
     surface.addEventListener('touchmove', (event) => {
@@ -572,24 +618,22 @@ export class HomeframeRouter {
       if (directionalDelta <= 0) return;
       gesture.claimed = true;
       gesture.delta = directionalDelta;
-      event.preventDefault();
-      this.setEdgeOffset(gesture, directionalDelta, edgeNavigation.commitDistance);
-    }, { capture: true, passive: false, signal });
+      this.scheduleEdgeOffset(gesture, directionalDelta, edgeNavigation.commitDistance);
+    }, { capture: true, passive: true, signal });
 
-    const finish = (event: TouchEvent, cancelled: boolean) => {
+    const finish = (cancelled: boolean) => {
       const gesture = this.edgeGesture;
       if (!gesture) return;
-      if (gesture.claimed) event.preventDefault();
       void this.finishEdgeGesture(cancelled, edgeNavigation.commitDistance);
     };
-    surface.addEventListener('touchend', (event) => finish(event, false), {
+    surface.addEventListener('touchend', () => finish(false), {
       capture: true,
-      passive: false,
+      passive: true,
       signal,
     });
-    surface.addEventListener('touchcancel', (event) => finish(event, true), {
+    surface.addEventListener('touchcancel', () => finish(true), {
       capture: true,
-      passive: false,
+      passive: true,
       signal,
     });
   }
@@ -598,14 +642,19 @@ export class HomeframeRouter {
     const gesture = this.edgeGesture;
     this.edgeGesture = null;
     if (typeof document === 'undefined') return;
-    gesture?.live.removeAttribute('data-hf-edge-live');
-    gesture?.preview.remove();
+    if (gesture) {
+      this.cancelEdgeFrame(gesture);
+      gesture.live.style.transform = gesture.originalLiveTransform;
+      gesture.previewContent.style.transform = gesture.originalPreviewTransform;
+      if (gesture.indicator) {
+        gesture.indicator.style.opacity = gesture.originalIndicatorOpacity;
+        gesture.indicator.style.transform = gesture.originalIndicatorTransform;
+      }
+      gesture.live.removeAttribute('data-hf-edge-live');
+      gesture.preview.remove();
+    }
     delete document.documentElement.dataset.hfEdgeNavigation;
     delete document.documentElement.dataset.hfEdgeSettling;
-    const style = getHomeframeRootStyle();
-    style.removeProperty('--hf-edge-progress');
-    style.removeProperty('--hf-edge-live-offset');
-    style.removeProperty('--hf-edge-preview-offset');
   }
 
   private async resolve(

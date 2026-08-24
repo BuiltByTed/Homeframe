@@ -1,5 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createHomeframeRouter } from '@homeframe/router';
+
+function dispatchTouch(target: Element, type: string, clientX?: number, clientY?: number): Event {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'touches', {
+    value: clientX === undefined || clientY === undefined ? [] : [{ clientX, clientY }],
+  });
+  target.dispatchEvent(event);
+  return event;
+}
 
 describe('HomeframeRouter', () => {
   it('uses genuine history entries and derives back direction', async () => {
@@ -93,6 +102,42 @@ describe('HomeframeRouter', () => {
     await Promise.resolve();
     expect(location.pathname).toBe('/items/2');
     expect(router.getSnapshot().direction).toBe('forward');
+    router.stop();
+  });
+
+  it('coalesces edge tracking into direct compositor transforms', async () => {
+    history.replaceState(null, '', '/');
+    document.body.innerHTML = `
+      <div data-hf-viewport>
+        <div data-hf-scroll-view><p>Snapshot content</p></div>
+      </div>
+    `;
+    const router = createHomeframeRouter([
+      { id: 'home', path: '/', element: null },
+      { id: 'item', path: '/items/:id', element: null },
+    ], { historyMode: 'managed' });
+    router.start();
+    await router.navigate('/items/1');
+
+    const guard = document.querySelector<HTMLElement>('[data-hf-edge-guard="back"]')!;
+    const live = document.querySelector<HTMLElement>('[data-hf-viewport]')!;
+    const clone = vi.spyOn(Node.prototype, 'cloneNode');
+    const animationFrame = vi.spyOn(window, 'requestAnimationFrame');
+
+    dispatchTouch(guard, 'touchstart', 4, 100);
+    dispatchTouch(guard, 'touchmove', 44, 101);
+    dispatchTouch(guard, 'touchmove', 104, 102);
+
+    expect(clone).toHaveBeenCalledTimes(1);
+    expect(animationFrame).toHaveBeenCalledTimes(1);
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(live.style.transform).toBe('translate3d(100px, 0, 0)');
+    expect(document.documentElement.style.getPropertyValue('--hf-edge-live-offset')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--hf-edge-preview-offset')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--hf-edge-progress')).toBe('');
+
+    clone.mockRestore();
+    animationFrame.mockRestore();
     router.stop();
   });
 
