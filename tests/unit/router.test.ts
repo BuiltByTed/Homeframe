@@ -141,6 +141,33 @@ describe('HomeframeRouter', () => {
     router.stop();
   });
 
+  it('restores a destination snapshot scroll position after attaching its edge preview', async () => {
+    history.replaceState(null, '', '/');
+    document.body.innerHTML = `
+      <div data-hf-viewport>
+        <div data-hf-scroll-view style="height:100px;overflow:auto">
+          <div style="height:1000px">Tall snapshot content</div>
+        </div>
+      </div>
+    `;
+    const router = createHomeframeRouter([
+      { id: 'home', path: '/', element: null },
+      { id: 'item', path: '/items/1', element: null },
+    ], { historyMode: 'managed' });
+    router.start();
+    const scroller = document.querySelector<HTMLElement>('[data-hf-scroll-view]')!;
+    scroller.scrollTop = 420;
+    await router.navigate('/items/1');
+
+    const guard = document.querySelector<HTMLElement>('[data-hf-edge-guard="back"]')!;
+    dispatchTouch(guard, 'touchstart', 4, 100);
+    const previewScroller = document.querySelector<HTMLElement>(
+      '[data-hf-edge-preview] [data-hf-scroll-view]',
+    );
+    expect(previewScroller?.scrollTop).toBe(420);
+    router.stop();
+  });
+
   it('intercepts only same-origin HTTP routes inside the configured scope', () => {
     history.replaceState(null, '', '/app/');
     const router = createHomeframeRouter([

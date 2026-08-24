@@ -129,8 +129,8 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   expect(worker).toContain('HF_UPDATE_READY');
   expect(worker).toContain('notificationclick');
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
-  await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'dark');
-  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark');
+  await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'light dark');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('light');
   await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
   expect(await page.evaluate(() => window.__HOMEFRAME_BUILD__)).toMatchObject({
     serviceWorkerConfig: { mode: 'automatic', reload: 'safe-point' },
@@ -142,6 +142,27 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
     },
     routerConfig: { historyMode: 'auto' },
   });
+});
+
+test('settings can force and persist light, dark, or system appearance', async ({ page }) => {
+  await page.getByRole('link', { name: 'Settings' }).click();
+  const appearance = page.getByRole('combobox', { name: 'Appearance' });
+  await expect(appearance).toHaveValue('system');
+
+  await appearance.selectOption('dark');
+  await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'dark');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('dark');
+  await expect(page.locator('meta[name="theme-color"][content="#020617"]')).toHaveAttribute('media', 'all');
+
+  await page.reload();
+  await expect(appearance).toHaveValue('dark');
+  await appearance.selectOption('light');
+  await expect(page.locator('html')).toHaveAttribute('data-hf-demo-theme', 'light');
+  await expect(page.locator('meta[name="theme-color"][content="#dbeafe"]')).toHaveAttribute('media', 'all');
+
+  await appearance.selectOption('system');
+  await expect(appearance).toHaveValue('system');
+  await expect(page.locator('meta[name="theme-color"][content="#dbeafe"]')).toHaveAttribute('media', '(prefers-color-scheme: light)');
 });
 
 test('deployment headers authorize the per-response bootstrap and never disguise missing assets or APIs as HTML', async ({ request }) => {

@@ -2,6 +2,8 @@
 
 Homeframe is a React PWA framework for apps that live on the iOS Home Screen. It owns the viewport, safe areas, keyboard geometry, app shell, startup presentation, History API routing, manifest assets, service worker, updates, installation capability, and notification capability while leaving product UI in the application.
 
+**[Open the live kitchen-sink PWA](https://builtbyted.github.io/homeframe/)** to test the framework in Safari, as an iPhone Home Screen app, in desktop Chrome/Safari, or in an installed desktop app window.
+
 The same application runs as an installable desktop Chrome PWA. Safari browser mode remains edge-to-edge: page content may extend beneath Safari's chrome while fixed headers, docks, composers, and navigation stay inside the usable visual viewport.
 
 ## What it solves
@@ -10,6 +12,7 @@ The same application runs as an installable desktop Chrome PWA. Safari browser m
 | --- | --- |
 | A black, white, or translucent gap appears around the Home indicator. | Paints through every physical edge, measures all four safe areas, and applies the bottom inset to the dock instead of shortening the page canvas. |
 | Safari content should extend behind browser chrome, but controls must remain reachable. | Browser mode paints edge-to-edge while the header, nav, and composer stay inside the usable visual viewport. |
+| iOS leaves a blurry/translucent strip above the app header. | The shell owns and paints the top safe-area backing as part of the stable header, including iOS 26’s edge treatment, so there is no detached blurry top edge. |
 | Opening the keyboard moves the whole page or makes the header jump down and slide back. | The installed-app shell keeps an immutable origin and size. The header never follows `visualViewport.offsetTop`; only a keyboard-aware dock moves. |
 | Bottom navigation or a text composer teleports when the keyboard opens or closes. | `ViewportDock keyboard="avoid"` animates with measured keyboard geometry and removes the Home-indicator inset while the keyboard owns that edge. |
 | Touching a field while trying to scroll opens the keyboard. | Homeframe waits for a completed click before its guarded `preventScroll` focus step; a drag that begins on a field remains a scroll. |
@@ -17,6 +20,7 @@ The same application runs as an installable desktop Chrome PWA. Safari browser m
 | Labels, icons, and navigation text become selected or show callouts. | UI text selection and touch callouts are disabled by default while form controls, code, and explicit `data-hf-selectable` regions remain selectable. |
 | An edge Back/Forward swipe exposes a white system surface in a light OS theme. | Installed iOS/iPadOS mode uses an interactive, finger-tracking in-app history transition with a cached destination scene. Safari, Chrome, and desktop PWAs retain browser History API navigation. |
 | Back/Forward refreshes the destination or loses scroll; button navigation inherits stale scroll. | Routes are same-document, keyed entries. History traversal restores per-entry scroll, while links, buttons, and tabs start the destination at the top. |
+| An internal app scroller loses the familiar quick route back to the top. | Tapping a non-interactive part of the app-owned header scrolls the active `AppScrollView` to top; interactive header controls remain untouched. iOS does not expose the native status-bar tap itself to web JavaScript. |
 | Returning from the app switcher flashes an empty white page. | Generated launch images, a static pre-React splash, lifecycle snapshots, and an explicit app canvas cover cold start and resume. |
 | Icons, splash images, manifest fields, status-bar metadata, and theme colors drift apart. | One typed config generates Apple touch icons, maskable icons, startup images, adaptive metadata, and the web manifest. Color mode can follow the system or force light/dark. |
 | A service-worker update mixes old and new assets or strands users on a stale bundle. | Atomic build-ID caches, bounded runtime caches (including media Range responses), offline navigation, and configurable prompt/automatic/manual activation keep a release internally consistent. Safe-point reload is configurable. |
@@ -41,6 +45,8 @@ npm run demo:serve -- --port=4180
 Open `http://localhost:4180` for ordinary local testing. A non-loopback iPhone or Mac needs HTTPS for service workers, installation, and notifications; see [docs/secure-local-testing.md](./docs/secure-local-testing.md).
 
 The kitchen-sink app exercises safe areas, keyboard docking, focus zoom, routing, scroll restoration, offline mode, updates, install education, push subscriptions, notifications, badging, lifecycle restore, and diagnostics. Add `?homeframe-debug` to show the geometry HUD.
+
+The hosted GitHub Pages build is static, so its local notification flow works but its “send real web push” control explains how to run the server-backed delivery test locally.
 
 Production recovery, private-cache logout, and the same-URL worker kill-switch are
 covered in [the recovery runbook](./docs/recovery-and-kill-switch.md).

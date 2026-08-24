@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { getHomeframeRootStyle } from '@homeframe/runtime';
 import {
   AppScrollView,
   AppShell,
@@ -37,6 +46,20 @@ import {
   type RouteMatch,
 } from '@homeframe/router';
 
+const appBase = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+const appPath = (path = '/') => path === '/'
+  ? appBase
+  : `${appBase}${path.replace(/^\/+/, '')}`;
+const staticDemo = import.meta.env.VITE_HOMEFRAME_STATIC_DEMO === 'true';
+type ThemePreference = 'system' | 'light' | 'dark';
+const ThemePreferenceContext = createContext<{
+  preference: ThemePreference;
+  resolved: 'light' | 'dark';
+  setPreference: (preference: ThemePreference) => void;
+} | null>(null);
+
 const cards = Array.from({ length: 30 }, (_, index) => ({
   id: index + 1,
   title: `Restoration item ${index + 1}`,
@@ -44,32 +67,82 @@ const cards = Array.from({ length: 30 }, (_, index) => ({
 }));
 
 const router = createHomeframeRouter([
-  { id: 'home', path: '/', element: <OverviewPage /> },
-  { id: 'keyboard', path: '/keyboard', element: <KeyboardPage /> },
-  { id: 'history', path: '/history', element: <HistoryPage /> },
-  { id: 'detail', path: '/history/:id', element: (match) => <DetailPage match={match} /> },
-  { id: 'pwa', path: '/pwa', element: <PwaPage /> },
-  { id: 'settings', path: '/settings', element: <SettingsPage /> },
-  { id: 'recovery', path: '/__homeframe/recovery', element: <HomeframeRecovery title="Homeframe recovery" /> },
+  { id: 'home', path: appPath(), element: <OverviewPage /> },
+  { id: 'keyboard', path: appPath('/keyboard'), element: <KeyboardPage /> },
+  { id: 'history', path: appPath('/history'), element: <HistoryPage /> },
+  { id: 'detail', path: appPath('/history/:id'), element: (match) => <DetailPage match={match} /> },
+  { id: 'pwa', path: appPath('/pwa'), element: <PwaPage /> },
+  { id: 'settings', path: appPath('/settings'), element: <SettingsPage /> },
+  { id: 'recovery', path: appPath('/__homeframe/recovery'), element: <HomeframeRecovery title="Homeframe recovery" /> },
   { id: 'not-found', path: '*', element: <NotFoundPage /> },
 ]);
 
 export function App() {
   return (
     <HomeframeProvider>
-      <HomeframeRouterProvider router={router}>
-        <HomeframeErrorBoundary fallback={(error, retry) => (
-          <AppViewport className="fatal-screen">
-            <h1>Something went wrong</h1>
-            <SelectableText>{error.message}</SelectableText>
-            <button onClick={retry}>Retry</button>
-          </AppViewport>
-        )}>
-          <ApplicationShell />
-        </HomeframeErrorBoundary>
-      </HomeframeRouterProvider>
+      <ThemePreferenceProvider>
+        <HomeframeRouterProvider router={router}>
+          <HomeframeErrorBoundary fallback={(error, retry) => (
+            <AppViewport className="fatal-screen">
+              <h1>Something went wrong</h1>
+              <SelectableText>{error.message}</SelectableText>
+              <button onClick={retry}>Retry</button>
+            </AppViewport>
+          )}>
+            <ApplicationShell />
+          </HomeframeErrorBoundary>
+        </HomeframeRouterProvider>
+      </ThemePreferenceProvider>
     </HomeframeProvider>
   );
+}
+
+function ThemePreferenceProvider({ children }: { children: ReactNode }) {
+  const [preference, setPreference] = useStateCheckpoint<ThemePreference>({
+    key: 'theme-preference',
+    storage: 'local',
+    initialValue: 'system',
+    deserialize: (value) => {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed === 'light' || parsed === 'dark' ? parsed : 'system';
+    },
+  });
+  const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  const resolved = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference;
+
+  useEffect(() => {
+    const media = matchMedia('(prefers-color-scheme: dark)');
+    const update = () => setSystemDark(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const runtimeStyle = getHomeframeRootStyle();
+    root.dataset.hfDemoTheme = resolved;
+    runtimeStyle.setProperty('--hf-color-scheme', `only ${resolved}`);
+    runtimeStyle.setProperty('--hf-app-background', resolved === 'dark' ? '#0b1429' : '#e8f0ff');
+    const themes = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+    const light = themes.find((meta) => meta.content.toLowerCase() === '#dbeafe');
+    const dark = themes.find((meta) => meta.content.toLowerCase() === '#020617');
+    if (light && dark) {
+      light.media = preference === 'system' ? '(prefers-color-scheme: light)'
+        : preference === 'light' ? 'all' : 'not all';
+      dark.media = preference === 'system' ? '(prefers-color-scheme: dark)'
+        : preference === 'dark' ? 'all' : 'not all';
+    }
+  }, [preference, resolved]);
+
+  const value = useMemo(() => ({ preference, resolved, setPreference }), [preference, resolved, setPreference]);
+  return <ThemePreferenceContext.Provider value={value}>{children}</ThemePreferenceContext.Provider>;
+}
+
+function useThemePreference() {
+  const value = useContext(ThemePreferenceContext);
+  if (!value) throw new Error('Theme preference requires ThemePreferenceProvider.');
+  return value;
 }
 
 function ApplicationShell() {
@@ -111,7 +184,7 @@ function Header() {
         <strong>Homeframe</strong>
         <span>{display} · keyboard {keyboard.phase}</span>
       </div>
-      <Link to="/settings" className="icon-button" aria-label="Settings">⚙</Link>
+      <Link to={appPath('/settings')} className="icon-button" aria-label="Settings">⚙</Link>
     </header>
   );
 }
@@ -119,10 +192,10 @@ function Header() {
 function BottomNav() {
   return (
     <nav className="bottom-nav" aria-label="Primary navigation">
-      <NavLink to="/"><span>⌂</span>Home</NavLink>
-      <NavLink to="/keyboard"><span>⌨</span>Keyboard</NavLink>
-      <NavLink to="/history"><span>⇄</span>History</NavLink>
-      <NavLink to="/pwa"><span>◉</span>PWA</NavLink>
+      <NavLink to={appPath()}><span>⌂</span>Home</NavLink>
+      <NavLink to={appPath('/keyboard')}><span>⌨</span>Keyboard</NavLink>
+      <NavLink to={appPath('/history')}><span>⇄</span>History</NavLink>
+      <NavLink to={appPath('/pwa')}><span>◉</span>PWA</NavLink>
     </nav>
   );
 }
@@ -167,9 +240,9 @@ function OverviewPage() {
       </div>
       <h2>Test labs</h2>
       <div className="feature-list">
-        <FeatureLink to="/keyboard" icon="⌨" title="Keyboard & safe areas">Focus controls at every scroll depth.</FeatureLink>
-        <FeatureLink to="/history" icon="⇄" title="History & restoration">Use links and native edge swipes.</FeatureLink>
-        <FeatureLink to="/pwa" icon="◉" title="Install, update & notify">Exercise all PWA capability states.</FeatureLink>
+        <FeatureLink to={appPath('/keyboard')} icon="⌨" title="Keyboard & safe areas">Focus controls at every scroll depth.</FeatureLink>
+        <FeatureLink to={appPath('/history')} icon="⇄" title="History & restoration">Use links and native edge swipes.</FeatureLink>
+        <FeatureLink to={appPath('/pwa')} icon="◉" title="Install, update & notify">Exercise all PWA capability states.</FeatureLink>
       </div>
       <div className="copy-card">
         <strong>Selection policy</strong>
@@ -210,7 +283,7 @@ function HistoryPage() {
       <p>The shell and header must remain mounted. Each destination uses a real History API entry.</p>
       <div className="history-list">
         {cards.map((card) => (
-          <Link key={card.id} to={`/history/${card.id}`} className="history-card">
+          <Link key={card.id} to={appPath(`/history/${card.id}`)} className="history-card">
             <span>{card.id}</span><div><strong>{card.title}</strong><p>{card.text}</p></div><b>›</b>
           </Link>
         ))}
@@ -246,21 +319,25 @@ function PwaPage() {
     const registration = await navigator.serviceWorker.ready;
     await registration.showNotification('Homeframe local test', {
       body: 'Tap to return to the PWA lab.',
-      icon: '/generated/notification-icon.png',
-      badge: '/generated/notification-badge.png',
-      data: { route: '/pwa' },
+      icon: appPath('/generated/notification-icon.png'),
+      badge: appPath('/generated/notification-badge.png'),
+      data: { route: appPath('/pwa') },
     });
   };
   const sendWebPush = async () => {
     setPushResult('Sending…');
     try {
-      const response = await fetch('/api/push/send', {
+      if (staticDemo) {
+        setPushResult('The GitHub Pages demo has no delivery server. Local notifications, permission nudges, and worker routing still run here.');
+        return;
+      }
+      const response = await fetch(appPath('/api/push/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: 'Homeframe end-to-end push',
           body: 'Delivered through the Push API and Homeframe service worker.',
-          route: '/pwa',
+          route: appPath('/pwa'),
           badgeCount,
         }),
       });
@@ -279,7 +356,7 @@ function PwaPage() {
       <CapabilityCard title="Notifications" state={notifications.state} blockers={notifications.blockers}>
         <button onClick={() => void notifications.requestAndSubscribe()}>Enable push</button>
         <button onClick={() => void sendLocalNotification()}>Send local test</button>
-        <button disabled={notifications.state !== 'subscribed'} onClick={() => void sendWebPush()}>Send real web push</button>
+        <button disabled={!staticDemo && notifications.state !== 'subscribed'} onClick={() => void sendWebPush()}>{staticDemo ? 'About server push' : 'Send real web push'}</button>
         {pushResult && <SelectableText as="p">{pushResult}</SelectableText>}
         {notifications.error && <SelectableText as="p" className="error-text">{notifications.error}</SelectableText>}
       </CapabilityCard>
@@ -297,11 +374,24 @@ function PwaPage() {
 
 function SettingsPage() {
   const [name, setName] = useStateCheckpoint({ key: 'settings-name', storage: 'local', initialValue: '' });
+  const theme = useThemePreference();
   return (
     <Page eyebrow="Persistence lab" title="Settings survive process death">
+      <FormRow label="Appearance">
+        <HomeframeSelect
+          aria-label="Appearance"
+          value={theme.preference}
+          onChange={(event) => theme.setPreference(event.target.value as ThemePreference)}
+        >
+          <option value="system">System (default)</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </HomeframeSelect>
+      </FormRow>
+      <p>Using {theme.preference === 'system' ? `the system’s ${theme.resolved} appearance` : `${theme.resolved} appearance`} across the app shell, browser metadata, and native form controls.</p>
       <FormRow label="Display name"><HomeframeInput value={name} onChange={(event) => setName(event.target.value)} placeholder="Stored locally" /></FormRow>
       <p>Close the installed PWA, allow iOS to terminate it, then relaunch. This non-sensitive sample setting should restore.</p>
-      <Link to="/" className="button-link">Done</Link>
+      <Link to={appPath()} className="button-link">Done</Link>
     </Page>
   );
 }
@@ -316,9 +406,12 @@ function CapabilityNudges() {
     if (notifications.eligible) notifications.recordImpression();
   }, [notifications.eligible]);
   if (install.eligible) {
+    const instructions = install.platformHint === 'ios'
+      ? 'Use Share, then Add to Home Screen for the full iPhone PWA experience.'
+      : 'Install it in its own app window with offline support.';
     return (
       <div className="nudge" role="region" aria-label="Install Homeframe">
-        <div><strong>Install this test app</strong><span>{install.state === 'manual-instructions' ? 'Use your browser’s Share menu, then Add to Home Screen.' : 'Open it in its own app window.'}</span></div>
+        <div><strong>Install Homeframe as an app</strong><span>{instructions}</span></div>
         <button onClick={() => void install.prompt()}>Continue</button>
         <button className="quiet" aria-label="Dismiss" onClick={() => install.snooze(1)}>×</button>
       </div>
@@ -347,7 +440,7 @@ function OfflinePage() {
 }
 
 function NotFoundPage() {
-  return <Page eyebrow="404" title="Route not found"><Link to="/">Return home</Link></Page>;
+  return <Page eyebrow="404" title="Route not found"><Link to={appPath()}>Return home</Link></Page>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

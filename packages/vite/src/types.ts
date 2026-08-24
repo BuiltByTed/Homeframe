@@ -126,6 +126,8 @@ export interface HomeframeViewportConfig {
   inputZoomMinimumPx?: number;
   strictInputZoom?: boolean;
   settleDelaysMs?: number[];
+  keyboardStabilizationMs?: number;
+  topTapToTop?: boolean;
 }
 
 export interface HomeframeNudgePolicyConfig {

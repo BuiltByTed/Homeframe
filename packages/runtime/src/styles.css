@@ -7,6 +7,7 @@
     --hf-viewport-height: 100dvh;
     --hf-viewport-x: 0px;
     --hf-viewport-y: 0px;
+    --hf-layout-viewport-top: 0px;
     --hf-shell-width: 100vw;
     --hf-shell-height: 100dvh;
     --hf-stable-width: 100vw;
@@ -62,7 +63,7 @@
   [data-hf-viewport] {
     position: absolute;
     z-index: 0;
-    top: 0;
+    top: var(--hf-layout-viewport-top);
     left: 0;
     width: var(--hf-shell-width);
     height: var(--hf-shell-height);
@@ -70,10 +71,9 @@
     min-height: 0;
     overflow: hidden;
     /*
-     * Keep the shell's origin fixed. During iOS keyboard animation,
-     * visualViewport.offsetTop is transient and must never translate the
-     * header. Extending the shell to the visual bottom lets only the final
-     * grid row (the dock) follow the keyboard.
+     * Installed iOS can pan the layout viewport without changing offsetTop.
+     * Runtime counters that hidden pageTop pan here; shell dimensions remain
+     * immutable while only the final grid row follows keyboard geometry.
      */
     background: var(--hf-app-background);
   }
@@ -228,6 +228,9 @@
 
   [data-hf-edge-preview='forward'] {
     z-index: 110;
+    /* The incoming page belongs above the live page, but its full-screen
+     * staging wrapper must remain transparent while that page is offscreen. */
+    background: transparent;
   }
 
   [data-hf-edge-preview-content] {

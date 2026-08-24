@@ -21,6 +21,8 @@ export interface HomeframeViewportSnapshot {
   height: number;
   x: number;
   y: number;
+  /** Layout-viewport pan that iOS may apply independently of offsetTop. */
+  pageTop: number;
   stableWidth: number;
   stableHeight: number;
   scale: number;
@@ -41,6 +43,10 @@ export interface ViewportRuntimeOptions {
   inputZoomMinimumPx?: number;
   strictInputZoom?: boolean;
   settleDelaysMs?: number[];
+  /** Hold the document and internal scroller steady after viewport activity. */
+  keyboardStabilizationMs?: number;
+  /** Scroll the active AppScrollView to top when app-owned header chrome is tapped. */
+  topTapToTop?: boolean;
 }
 
 interface VirtualKeyboardLike extends EventTarget {
@@ -67,6 +73,7 @@ const defaultViewport: HomeframeViewportSnapshot = {
   height: 0,
   x: 0,
   y: 0,
+  pageTop: 0,
   stableWidth: 0,
   stableHeight: 0,
   scale: 1,
@@ -117,6 +124,12 @@ export class ViewportController {
   private lastCandidate: Omit<HomeframeViewportSnapshot, 'revision'> | null = null;
   private focusedEditable: HTMLElement | null = null;
   private editableScrollDrag: EditableScrollDrag | null = null;
+  private keyboardAnchor: { scroller: HTMLElement; scrollTop: number } | null = null;
+  private keyboardCorrectionFrame = 0;
+  private keyboardCorrectionTimer = 0;
+  private keyboardSettling = false;
+  private userOwnsKeyboardScroll = false;
+  private correctingKeyboardScroll = false;
 
   constructor(options: ViewportRuntimeOptions = {}) {
     this.options = {
@@ -125,6 +138,8 @@ export class ViewportController {
       inputZoomMinimumPx: options.inputZoomMinimumPx ?? 16,
       strictInputZoom: options.strictInputZoom ?? false,
       settleDelaysMs: options.settleDelaysMs ?? [50, 150, 320],
+      keyboardStabilizationMs: options.keyboardStabilizationMs ?? 220,
+      topTapToTop: options.topTapToTop ?? true,
     };
   }
 
@@ -146,6 +161,12 @@ export class ViewportController {
     this.createSafeAreaProbe();
 
     const schedule = () => this.scheduleMeasure();
+    const scheduleKeyboardViewportChange = () => {
+      this.scheduleMeasure();
+      if (this.focusedEditable || this.snapshot.keyboard.phase !== 'closed') {
+        this.beginKeyboardSettlement();
+      }
+    };
     window.addEventListener('resize', schedule, { signal });
     window.addEventListener('orientationchange', () => this.invalidateStableSize(), {
       signal,
@@ -163,8 +184,8 @@ export class ViewportController {
       schedule();
     }, { signal, passive: true });
 
-    window.visualViewport?.addEventListener('resize', schedule, { signal });
-    window.visualViewport?.addEventListener('scroll', schedule, { signal });
+    window.visualViewport?.addEventListener('resize', scheduleKeyboardViewportChange, { signal });
+    window.visualViewport?.addEventListener('scroll', scheduleKeyboardViewportChange, { signal });
 
     const virtualKeyboard = (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard;
     virtualKeyboard?.addEventListener('geometrychange', schedule, { signal });
@@ -222,6 +243,7 @@ export class ViewportController {
     // its layout-viewport pan without making fields grab focus on touch-down.
     document.addEventListener('click', (event) => {
       if (!isEditableElement(event.target) || document.activeElement === event.target) return;
+      this.captureKeyboardAnchor(event.target);
       const scrollX = window.scrollX;
       const scrollY = window.scrollY;
       event.target.focus({ preventScroll: true });
@@ -233,6 +255,8 @@ export class ViewportController {
     document.addEventListener('focusin', (event) => {
       if (!isEditableElement(event.target)) return;
       this.focusedEditable = event.target;
+      this.captureKeyboardAnchor(event.target);
+      this.beginKeyboardSettlement();
       this.auditFocusedElement(event.target);
       this.scheduleSettle();
     }, { signal });
@@ -242,9 +266,47 @@ export class ViewportController {
         this.focusedEditable = isEditableElement(document.activeElement)
           ? document.activeElement
           : null;
+        this.beginKeyboardSettlement();
         this.scheduleSettle();
       });
     }, { signal });
+
+    const takeKeyboardScrollControl = () => {
+      if (!this.keyboardSettling && this.snapshot.keyboard.phase === 'closed') return;
+      this.userOwnsKeyboardScroll = true;
+      this.keyboardSettling = false;
+      this.rememberKeyboardScroll();
+      this.stopKeyboardCorrection();
+    };
+    document.addEventListener('pointerdown', takeKeyboardScrollControl, {
+      signal,
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('touchstart', takeKeyboardScrollControl, {
+      signal,
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('wheel', takeKeyboardScrollControl, {
+      signal,
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('scroll', () => {
+      if (this.correctingKeyboardScroll || (this.keyboardSettling && !this.userOwnsKeyboardScroll)) return;
+      this.rememberKeyboardScroll();
+    }, { signal, capture: true, passive: true });
+
+    document.addEventListener('click', (event) => {
+      if (!this.options.topTapToTop || !this.isIosStandalone() || this.focusedEditable
+        || !(event.target instanceof Element)) return;
+      if (!event.target.closest('[data-hf-header]')) return;
+      if (event.target.closest(
+        'a, button, input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+      )) return;
+      this.scrollPrimaryViewToTop();
+    }, { signal, capture: true });
 
     for (const mode of ['standalone', 'fullscreen', 'minimal-ui'] as const) {
       window.matchMedia(`(display-mode: ${mode})`).addEventListener('change', () => {
@@ -267,6 +329,10 @@ export class ViewportController {
     this.safeAreaProbe?.remove();
     this.safeAreaProbe = null;
     this.editableScrollDrag = null;
+    this.stopKeyboardCorrection();
+    this.keyboardAnchor = null;
+    this.keyboardSettling = false;
+    this.userOwnsKeyboardScroll = false;
   }
 
   scheduleSettle(): void {
@@ -298,6 +364,10 @@ export class ViewportController {
   private suspendKeyboard(): void {
     this.focusedEditable?.blur();
     this.focusedEditable = null;
+    this.stopKeyboardCorrection();
+    this.keyboardSettling = false;
+    this.userOwnsKeyboardScroll = false;
+    this.keyboardAnchor = null;
     if (this.snapshot.keyboard.phase === 'closed') return;
     this.snapshot = {
       ...this.snapshot,
@@ -343,6 +413,99 @@ export class ViewportController {
     return finite(rect?.height ?? 0, 0);
   }
 
+  private isIosStandalone(): boolean {
+    return (navigator as NavigatorWithVirtualKeyboard).standalone === true;
+  }
+
+  private physicalViewportHeight(layoutHeight: number): number {
+    if (!this.isIosStandalone()) return layoutHeight;
+    const screenHeight = finite(window.screen?.height ?? 0, 0);
+    const outerHeight = finite(window.outerHeight, 0);
+    return Math.max(layoutHeight, window.innerHeight, screenHeight || outerHeight);
+  }
+
+  private readPageTop(layoutHeight?: number): number {
+    if (!this.isIosStandalone()) return 0;
+    const maximum = Math.max(1, layoutHeight ?? this.snapshot.stableHeight ?? window.innerHeight);
+    return bounded(window.visualViewport?.pageTop ?? 0, 0, maximum);
+  }
+
+  private primaryScroller(element: HTMLElement): HTMLElement | null {
+    const direct = element.closest<HTMLElement>('[data-hf-scroll-view]');
+    if (direct) return direct;
+    return element.closest<HTMLElement>('[data-hf-shell]')
+      ?.querySelector<HTMLElement>('[data-hf-scroll-view]') ?? null;
+  }
+
+  private captureKeyboardAnchor(element: HTMLElement): void {
+    const scroller = this.primaryScroller(element);
+    if (!scroller) return;
+    this.keyboardAnchor = { scroller, scrollTop: scroller.scrollTop };
+  }
+
+  private rememberKeyboardScroll(): void {
+    if (!this.keyboardAnchor) return;
+    this.keyboardAnchor.scrollTop = this.keyboardAnchor.scroller.scrollTop;
+  }
+
+  private beginKeyboardSettlement(): void {
+    if (!this.keyboardAnchor && this.focusedEditable) {
+      this.captureKeyboardAnchor(this.focusedEditable);
+    }
+    this.keyboardSettling = true;
+    this.userOwnsKeyboardScroll = false;
+    if (this.keyboardCorrectionTimer) window.clearTimeout(this.keyboardCorrectionTimer);
+    this.keyboardCorrectionTimer = window.setTimeout(() => {
+      this.keyboardCorrectionTimer = 0;
+      this.keyboardSettling = false;
+      if (this.keyboardCorrectionFrame) cancelAnimationFrame(this.keyboardCorrectionFrame);
+      this.keyboardCorrectionFrame = 0;
+      if (!this.focusedEditable && this.snapshot.keyboard.phase === 'closed') {
+        this.keyboardAnchor = null;
+      }
+    }, this.options.keyboardStabilizationMs);
+    if (!this.keyboardCorrectionFrame) {
+      this.keyboardCorrectionFrame = requestAnimationFrame(() => this.correctKeyboardPan());
+    }
+  }
+
+  private correctKeyboardPan(): void {
+    this.keyboardCorrectionFrame = 0;
+    if (!this.keyboardSettling) return;
+    if (!this.userOwnsKeyboardScroll && this.keyboardAnchor) {
+      this.correctingKeyboardScroll = true;
+      this.keyboardAnchor.scroller.scrollTop = this.keyboardAnchor.scrollTop;
+      this.correctingKeyboardScroll = false;
+    }
+    if ((window.visualViewport?.scale ?? 1) <= 1.01) window.scrollTo(0, 0);
+    getHomeframeRootStyle().setProperty('--hf-layout-viewport-top', `${this.readPageTop()}px`);
+    this.keyboardCorrectionFrame = requestAnimationFrame(() => this.correctKeyboardPan());
+  }
+
+  private stopKeyboardCorrection(): void {
+    if (this.keyboardCorrectionFrame) cancelAnimationFrame(this.keyboardCorrectionFrame);
+    if (this.keyboardCorrectionTimer) window.clearTimeout(this.keyboardCorrectionTimer);
+    this.keyboardCorrectionFrame = 0;
+    this.keyboardCorrectionTimer = 0;
+  }
+
+  private activeScrollView(): HTMLElement | null {
+    return document.querySelector<HTMLElement>(
+      '[data-hf-viewport]:not([data-hf-edge-preview-content]) [data-hf-scroll-view]',
+    ) ?? document.querySelector<HTMLElement>('[data-hf-scroll-view]');
+  }
+
+  private scrollPrimaryViewToTop(): void {
+    const scroller = this.activeScrollView();
+    if (!scroller || scroller.scrollTop <= 0) return;
+    if (typeof scroller.scrollTo === 'function') {
+      scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      scroller.scrollTop = 0;
+    }
+    emitRuntimeEvent('scroll-to-top', { source: 'app-header' });
+  }
+
   private measure(force: boolean): void {
     const visual = window.visualViewport;
     const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
@@ -353,6 +516,7 @@ export class ViewportController {
     const height = bounded(visual?.height ?? layoutHeight, previousHeight, Math.max(1, layoutHeight * 2));
     const x = bounded(visual?.offsetLeft ?? 0, this.snapshot.x, Math.max(1, layoutWidth));
     const y = bounded(visual?.offsetTop ?? 0, this.snapshot.y, Math.max(1, layoutHeight));
+    const pageTop = this.readPageTop(layoutHeight);
     const scale = bounded(visual?.scale ?? 1, this.snapshot.scale || 1, 10) || 1;
     // Keyboard shrinkage can make the visual viewport wider than it is tall in
     // portrait. Orientation belongs to the stable layout viewport, not that
@@ -372,7 +536,7 @@ export class ViewportController {
     }
     if (!stableWidth || !stableHeight) {
       stableWidth = Math.max(layoutWidth, width);
-      stableHeight = Math.max(layoutHeight, height + y);
+      stableHeight = Math.max(this.physicalViewportHeight(layoutHeight), height + y);
     }
 
     const virtualKeyboardHeight = Math.min(this.readVirtualKeyboardHeight(), stableHeight);
@@ -419,7 +583,7 @@ export class ViewportController {
 
     if (keyboardPhase === 'closed' && scale <= 1.01) {
       stableWidth = Math.max(width + x, layoutWidth);
-      stableHeight = Math.max(height + y, layoutHeight);
+      stableHeight = Math.max(height + y, this.physicalViewportHeight(layoutHeight));
     }
 
     const rawSafeArea = this.readSafeArea();
@@ -428,6 +592,7 @@ export class ViewportController {
       height,
       x,
       y,
+      pageTop,
       stableWidth,
       stableHeight,
       scale,
@@ -450,6 +615,7 @@ export class ViewportController {
       && closeEnough(this.lastCandidate.width, candidate.width)
       && closeEnough(this.lastCandidate.height, candidate.height)
       && closeEnough(this.lastCandidate.y, candidate.y)
+      && closeEnough(this.lastCandidate.pageTop, candidate.pageTop)
       && closeEnough(this.lastCandidate.keyboard.height, candidate.keyboard.height)) {
       this.stableSamples += 1;
     } else {
@@ -484,6 +650,7 @@ export class ViewportController {
     style.setProperty('--hf-viewport-height', px(snapshot.height));
     style.setProperty('--hf-viewport-x', px(snapshot.x));
     style.setProperty('--hf-viewport-y', px(snapshot.y));
+    style.setProperty('--hf-layout-viewport-top', px(this.isIosStandalone() ? snapshot.pageTop : 0));
     const visualRight = snapshot.x + snapshot.width;
     const visualBottom = snapshot.y + snapshot.height;
     // Installed apps keep one immutable shell rectangle for their entire
@@ -522,6 +689,7 @@ export class ViewportController {
     root.dataset.hfKeyboard = snapshot.keyboard.phase;
     root.dataset.hfDisplayMode = snapshot.displayMode;
     root.dataset.hfOrientation = snapshot.orientation;
+    root.dataset.hfIosStandalone = this.isIosStandalone() ? 'true' : 'false';
   }
 
   private auditFocusedElement(element: HTMLElement): void {

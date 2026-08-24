@@ -13,6 +13,7 @@ export type HomeframeEventName =
   | 'route-recovery'
   | 'install-outcome'
   | 'notification-outcome'
+  | 'scroll-to-top'
   | 'diagnostic';
 
 export interface HomeframeRuntimeEvent<T = unknown> {

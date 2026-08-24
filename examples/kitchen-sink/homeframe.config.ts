@@ -1,28 +1,35 @@
 import { defineHomeframe } from '@homeframe/vite';
 
+const configuredBase = process.env.HOMEFRAME_BASE_PATH ?? '/';
+const scope = `/${configuredBase.replace(/^\/+|\/+$/g, '')}${configuredBase === '/' ? '' : '/'}`;
+const appPath = (path = '/') => path === '/'
+  ? scope
+  : `${scope}${path.replace(/^\/+/, '')}`;
+const staticDemo = process.env.VITE_HOMEFRAME_STATIC_DEMO === 'true';
+
 export default defineHomeframe({
   app: {
-    id: '/',
+    id: scope,
     name: 'Homeframe Kitchen Sink',
     shortName: 'Homeframe',
     description: 'A hands-on test app for safe areas, keyboards, routing, offline use, updates, installation, and notifications.',
-    startUrl: '/',
-    scope: '/',
+    startUrl: scope,
+    scope,
     display: 'standalone',
-    themeColor: '#172554',
+    themeColor: '#dbeafe',
     themeColorDark: '#020617',
     // iOS 26 paints a native standalone scene inset below the WebKit document.
     // Match the dock surface so it continues behind the Home indicator.
-    backgroundColor: '#0b1429',
+    backgroundColor: '#e8f0ff',
     backgroundColorDark: '#0b1429',
-    colorScheme: 'dark',
+    colorScheme: 'system',
     icon: './brand/icon.svg',
     maskableIcon: './brand/icon.svg',
     lang: 'en-US',
     categories: ['productivity', 'utilities'],
     shortcuts: [
-      { name: 'Keyboard Lab', shortName: 'Keyboard', url: '/keyboard' },
-      { name: 'PWA Controls', shortName: 'PWA', url: '/pwa' },
+      { name: 'Keyboard Lab', shortName: 'Keyboard', url: appPath('/keyboard') },
+      { name: 'PWA Controls', shortName: 'PWA', url: appPath('/pwa') },
     ],
   },
   splash: {
@@ -53,15 +60,15 @@ export default defineHomeframe({
     cspNonce: '__HOMEFRAME_CSP_NONCE__',
   },
   serviceWorker: {
-    documentFallback: '/',
-    navigationDeny: ['/api/'],
+    documentFallback: scope,
+    navigationDeny: [appPath('/api/')],
     navigationTimeoutSeconds: 2,
     cacheRevisionSalt: process.env.HOMEFRAME_CACHE_SALT ?? '',
     cleanupOutdated: true,
     update: { mode: 'automatic', reload: 'safe-point' },
     runtimeCaching: [
       {
-        match: '/demo-images/',
+        match: appPath('/demo-images/'),
         matchType: 'prefix',
         strategy: 'stale-while-revalidate',
         cacheName: 'demo-images',
@@ -76,12 +83,12 @@ export default defineHomeframe({
       ...(process.env.VITE_VAPID_PUBLIC_KEY ? {
         applicationServerKey: process.env.VITE_VAPID_PUBLIC_KEY,
       } : {}),
-      subscriptionTransport: '/api/push/subscriptions',
+      ...(!staticDemo ? { subscriptionTransport: appPath('/api/push/subscriptions') } : {}),
       defaultTitle: 'Homeframe',
       defaultBody: 'The example app sent a notification.',
-      defaultIcon: '/generated/notification-icon.png',
-      defaultBadge: '/generated/notification-badge.png',
-      routeAllowlist: ['/', '/pwa', '/keyboard', '/history'],
+      defaultIcon: appPath('/generated/notification-icon.png'),
+      defaultBadge: appPath('/generated/notification-badge.png'),
+      routeAllowlist: [scope, appPath('/pwa'), appPath('/keyboard'), appPath('/history')],
     },
   },
 });

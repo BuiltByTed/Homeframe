@@ -21,6 +21,7 @@
     "build:packages": "npm run build:runtime && npm run build:sw && npm run build:react && npm run build:router && npm run build:vite && npm run build:eslint && npm run build:cli",
     "build:example": "npm run build -w @homeframe/example",
     "build": "npm run build:packages && npm run build:example",
+    "build:pages": "HOMEFRAME_BASE_PATH=/homeframe/ VITE_HOMEFRAME_STATIC_DEMO=true npm run build && node scripts/prepare-pages.mjs",
     "dev": "npm run dev -w @homeframe/example",
     "preview": "npm run preview -w @homeframe/example",
     "typecheck": "tsc --noEmit -p tsconfig.json",

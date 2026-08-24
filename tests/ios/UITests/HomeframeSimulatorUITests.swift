@@ -190,6 +190,28 @@ final class HomeframeSimulatorUITests: XCTestCase {
     }
 
     @MainActor
+    func testAppHeaderTapScrollsTheInternalRouteViewToTop() throws {
+        let webApp = try launchHomeframe()
+        let historyLink = webApp.links
+            .matching(NSPredicate(format: "label CONTAINS 'History'"))
+            .firstMatch
+        XCTAssertTrue(historyLink.waitForExistence(timeout: 10))
+        tapCenter(of: historyLink, in: webApp)
+
+        let historyTitle = webApp.staticTexts["Scroll, navigate, then edge-swipe back"]
+        XCTAssertTrue(historyTitle.waitForExistence(timeout: 10))
+        let initialTitleFrame = historyTitle.frame
+        for _ in 0..<4 { webApp.swipeUp() }
+        XCTAssertLessThan(historyTitle.frame.maxY, webApp.windows.firstMatch.frame.minY)
+
+        let window = webApp.windows.firstMatch.frame
+        pressScreenPoint(x: window.minX + 96, y: window.minY + 74, in: webApp)
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            abs(historyTitle.frame.minY - initialTitleFrame.minY) < 2
+        })
+    }
+
+    @MainActor
     func testSafariBrowserModeKeepsInteractiveControlsClearOfBrowserChrome() throws {
         let host = XCUIApplication()
         host.launchEnvironment["HOMEFRAME_TEST_URL"] = ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]

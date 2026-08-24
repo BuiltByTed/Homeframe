@@ -6,6 +6,7 @@ class MockVisualViewport extends EventTarget {
   height = 844;
   offsetLeft = 0;
   offsetTop = 0;
+  pageTop = 0;
   scale = 1;
 }
 
@@ -72,6 +73,72 @@ describe('ViewportController', () => {
     expect(document.documentElement.style.getPropertyValue('--hf-viewport-y')).toBe('80px');
     expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('500px');
     controller.stop();
+  });
+
+  it('counteracts standalone iOS page pan and preserves physical screen height', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 852, configurable: true });
+    const controller = new ViewportController({
+      settleDelaysMs: [1, 2],
+      keyboardStabilizationMs: 5,
+    });
+    controller.start();
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    scroller.scrollTop = 275;
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    shell.append(scroller, input);
+    document.body.append(shell);
+    input.focus();
+
+    viewport.height = 500;
+    viewport.pageTop = 64;
+    viewport.dispatchEvent(new Event('resize'));
+    viewport.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(controller.getSnapshot()).toMatchObject({
+      stableHeight: 852,
+      pageTop: 64,
+      keyboard: { height: 352 },
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('64px');
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('852px');
+    expect(scroller.scrollTop).toBe(275);
+    expect(document.documentElement.dataset.hfIosStandalone).toBe('true');
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it('bridges a non-interactive app-header tap to the active internal scroll view', () => {
+    installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const viewport = document.createElement('div');
+    viewport.dataset.hfViewport = '';
+    const header = document.createElement('header');
+    header.dataset.hfHeader = '';
+    header.append(document.createElement('span'));
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    scroller.scrollTop = 360;
+    viewport.append(header, scroller);
+    document.body.append(viewport);
+    const controller = new ViewportController({ settleDelaysMs: [] });
+    controller.start();
+
+    header.firstElementChild?.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      clientY: 70,
+    }));
+
+    expect(scroller.scrollTop).toBe(0);
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
   it('restores installed-app height when the app backgrounds with stale keyboard geometry', async () => {

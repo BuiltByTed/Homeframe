@@ -455,8 +455,11 @@ export class HomeframeRouter {
     liveScrollViews.forEach((scrollView, index) => {
       const copy = clonedScrollViews[index];
       if (!copy) return;
-      copy.scrollTop = scrollView.scrollTop;
-      copy.scrollLeft = scrollView.scrollLeft;
+      // A detached clone has no scrollable layout, so assigning scrollTop here
+      // is clamped to zero. Preserve the values as data and restore them after
+      // the destination snapshot is attached for an edge preview.
+      copy.dataset.hfSnapshotScrollTop = String(scrollView.scrollTop);
+      copy.dataset.hfSnapshotScrollLeft = String(scrollView.scrollLeft);
     });
     entry.snapshot = clone;
   }
@@ -487,6 +490,10 @@ export class HomeframeRouter {
     // work at the start of every edge gesture.
     preview.append(snapshot);
     (document.body ?? document.documentElement).append(preview);
+    for (const scrollView of snapshot.querySelectorAll<HTMLElement>('[data-hf-scroll-view]')) {
+      scrollView.scrollTop = Number(scrollView.dataset.hfSnapshotScrollTop ?? 0);
+      scrollView.scrollLeft = Number(scrollView.dataset.hfSnapshotScrollLeft ?? 0);
+    }
     live.dataset.hfEdgeLive = '';
 
     const root = document.documentElement;

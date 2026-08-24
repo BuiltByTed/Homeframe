@@ -1,9 +1,137 @@
 :root {
-  --hf-header-background: #0b1429;
-  --hf-dock-background: #0b1429;
+  --demo-light-edge: #e8f0ff;
+  --demo-light-canvas: radial-gradient(circle at 70% -20%, rgb(96 165 250 / 30%), transparent 45%), linear-gradient(180deg, #f8fbff, #edf4ff 42%, #dce8fb);
+  --demo-light-text: #172033;
+  --demo-light-heading: #071226;
+  --demo-light-muted: #52637a;
+  --demo-light-lede: #29496f;
+  --demo-light-accent: #0369a1;
+  --demo-light-accent-soft: #075985;
+  --demo-light-panel: rgb(255 255 255 / 76%);
+  --demo-light-panel-soft: rgb(255 255 255 / 62%);
+  --demo-light-input: rgb(255 255 255 / 86%);
+  --demo-light-control: rgb(255 255 255 / 72%);
+  --demo-light-line: rgb(30 64 175 / 14%);
+  --demo-light-line-strong: rgb(30 64 175 / 22%);
+  --demo-light-shadow: rgb(30 64 175 / 16%);
+  --demo-light-route: rgb(255 255 255 / 80%);
+  --demo-light-toast: rgb(255 255 255 / 96%);
+  --demo-light-selectable: #0c4a6e;
+  --demo-light-selectable-bg: rgb(14 116 144 / 12%);
+  --demo-light-success: #166534;
+  --demo-light-success-bg: rgb(187 247 208 / 68%);
+  --demo-light-error: #b91c1c;
+  --demo-light-offline: #17345b;
+  --demo-light-offline-bg: #e8f0ff;
+  --demo-dark-edge: #0b1429;
+  --demo-dark-canvas: radial-gradient(circle at 70% -20%, rgb(59 130 246 / 45%), transparent 45%), linear-gradient(180deg, #172554, #0f172a 42%, #020617);
+  --demo-dark-text: #e2e8f0;
+  --demo-dark-heading: #f8fafc;
+  --demo-dark-muted: #94a3b8;
+  --demo-dark-lede: #bfdbfe;
+  --demo-dark-accent: #7dd3fc;
+  --demo-dark-accent-soft: #bae6fd;
+  --demo-dark-panel: rgb(30 41 59 / 66%);
+  --demo-dark-panel-soft: rgb(30 41 59 / 58%);
+  --demo-dark-input: rgb(15 23 42 / 75%);
+  --demo-dark-control: rgb(30 41 59 / 72%);
+  --demo-dark-line: rgb(148 163 184 / 16%);
+  --demo-dark-line-strong: rgb(148 163 184 / 24%);
+  --demo-dark-shadow: rgb(2 6 23 / 45%);
+  --demo-dark-route: rgb(2 6 23 / 72%);
+  --demo-dark-toast: rgb(15 23 42 / 96%);
+  --demo-dark-selectable: #e0f2fe;
+  --demo-dark-selectable-bg: rgb(14 116 144 / 20%);
+  --demo-dark-success: #bbf7d0;
+  --demo-dark-success-bg: rgb(22 101 52 / 40%);
+  --demo-dark-error: #fecaca;
+  --demo-dark-offline: #dbeafe;
+  --demo-dark-offline-bg: #0f172a;
+  --demo-edge: var(--demo-light-edge);
+  --demo-canvas: var(--demo-light-canvas);
+  --demo-text: var(--demo-light-text);
+  --demo-heading: var(--demo-light-heading);
+  --demo-muted: var(--demo-light-muted);
+  --demo-lede: var(--demo-light-lede);
+  --demo-accent: var(--demo-light-accent);
+  --demo-accent-soft: var(--demo-light-accent-soft);
+  --demo-panel: var(--demo-light-panel);
+  --demo-panel-soft: var(--demo-light-panel-soft);
+  --demo-input: var(--demo-light-input);
+  --demo-control: var(--demo-light-control);
+  --demo-line: var(--demo-light-line);
+  --demo-line-strong: var(--demo-light-line-strong);
+  --demo-shadow: var(--demo-light-shadow);
+  --demo-route: var(--demo-light-route);
+  --demo-toast: var(--demo-light-toast);
+  --demo-selectable: var(--demo-light-selectable);
+  --demo-selectable-bg: var(--demo-light-selectable-bg);
+  --demo-success: var(--demo-light-success);
+  --demo-success-bg: var(--demo-light-success-bg);
+  --demo-error: var(--demo-light-error);
+  --demo-offline: var(--demo-light-offline);
+  --demo-offline-bg: var(--demo-light-offline-bg);
+  --hf-header-background: var(--demo-edge);
+  --hf-dock-background: var(--demo-edge);
   font-family: Inter, ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #e2e8f0;
+  color: var(--demo-text);
   font-synthesis: none;
+}
+
+:root[data-hf-demo-theme='dark'] {
+  --demo-edge: var(--demo-dark-edge);
+  --demo-canvas: var(--demo-dark-canvas);
+  --demo-text: var(--demo-dark-text);
+  --demo-heading: var(--demo-dark-heading);
+  --demo-muted: var(--demo-dark-muted);
+  --demo-lede: var(--demo-dark-lede);
+  --demo-accent: var(--demo-dark-accent);
+  --demo-accent-soft: var(--demo-dark-accent-soft);
+  --demo-panel: var(--demo-dark-panel);
+  --demo-panel-soft: var(--demo-dark-panel-soft);
+  --demo-input: var(--demo-dark-input);
+  --demo-control: var(--demo-dark-control);
+  --demo-line: var(--demo-dark-line);
+  --demo-line-strong: var(--demo-dark-line-strong);
+  --demo-shadow: var(--demo-dark-shadow);
+  --demo-route: var(--demo-dark-route);
+  --demo-toast: var(--demo-dark-toast);
+  --demo-selectable: var(--demo-dark-selectable);
+  --demo-selectable-bg: var(--demo-dark-selectable-bg);
+  --demo-success: var(--demo-dark-success);
+  --demo-success-bg: var(--demo-dark-success-bg);
+  --demo-error: var(--demo-dark-error);
+  --demo-offline: var(--demo-dark-offline);
+  --demo-offline-bg: var(--demo-dark-offline-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-hf-demo-theme]) {
+    --demo-edge: var(--demo-dark-edge);
+    --demo-canvas: var(--demo-dark-canvas);
+    --demo-text: var(--demo-dark-text);
+    --demo-heading: var(--demo-dark-heading);
+    --demo-muted: var(--demo-dark-muted);
+    --demo-lede: var(--demo-dark-lede);
+    --demo-accent: var(--demo-dark-accent);
+    --demo-accent-soft: var(--demo-dark-accent-soft);
+    --demo-panel: var(--demo-dark-panel);
+    --demo-panel-soft: var(--demo-dark-panel-soft);
+    --demo-input: var(--demo-dark-input);
+    --demo-control: var(--demo-dark-control);
+    --demo-line: var(--demo-dark-line);
+    --demo-line-strong: var(--demo-dark-line-strong);
+    --demo-shadow: var(--demo-dark-shadow);
+    --demo-route: var(--demo-dark-route);
+    --demo-toast: var(--demo-dark-toast);
+    --demo-selectable: var(--demo-dark-selectable);
+    --demo-selectable-bg: var(--demo-dark-selectable-bg);
+    --demo-success: var(--demo-dark-success);
+    --demo-success-bg: var(--demo-dark-success-bg);
+    --demo-error: var(--demo-dark-error);
+    --demo-offline: var(--demo-dark-offline);
+    --demo-offline-bg: var(--demo-dark-offline-bg);
+  }
 }
 
 button,
@@ -18,7 +146,7 @@ button,
 .button-link {
   min-height: 44px;
   padding: 0.65rem 0.9rem;
-  border: 1px solid rgb(148 163 184 / 25%);
+  border: 1px solid var(--demo-line-strong);
   border-radius: 12px;
   color: white;
   background: #2563eb;
@@ -37,14 +165,12 @@ a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #7dd3fc;
+  outline: 3px solid var(--demo-accent);
   outline-offset: 2px;
 }
 
 .app-viewport {
-  background:
-    radial-gradient(circle at 70% -20%, rgb(59 130 246 / 45%), transparent 45%),
-    linear-gradient(180deg, #172554, #0f172a 42%, #020617);
+  background: var(--demo-canvas);
 }
 
 .top-bar {
@@ -53,9 +179,9 @@ select:focus-visible {
   gap: 0.75rem;
   min-height: 58px;
   padding: 8px 14px;
-  border-bottom: 1px solid rgb(148 163 184 / 16%);
+  border-bottom: 1px solid var(--demo-line);
   background: transparent;
-  box-shadow: 0 8px 30px rgb(2 6 23 / 20%);
+  box-shadow: 0 8px 30px var(--demo-shadow);
   backdrop-filter: blur(18px) saturate(1.4);
 }
 
@@ -81,7 +207,7 @@ select:focus-visible {
 }
 
 .header-title span {
-  color: #94a3b8;
+  color: var(--demo-muted);
   font-size: 0.72rem;
 }
 
@@ -91,10 +217,10 @@ select:focus-visible {
   height: 44px;
   margin-left: auto;
   place-items: center;
-  border: 1px solid rgb(148 163 184 / 18%);
+  border: 1px solid var(--demo-line);
   border-radius: 14px;
-  color: #e2e8f0;
-  background: rgb(30 41 59 / 72%);
+  color: var(--demo-text);
+  background: var(--demo-control);
   text-decoration: none;
 }
 
@@ -112,7 +238,7 @@ select:focus-visible {
 .page h1 {
   max-width: 18ch;
   margin: 0;
-  color: #f8fafc;
+  color: var(--demo-heading);
   font-size: clamp(2rem, 8vw, 3.75rem);
   line-height: 0.98;
   letter-spacing: -0.055em;
@@ -120,13 +246,13 @@ select:focus-visible {
 
 .page h2 {
   margin-top: 2rem;
-  color: #f8fafc;
+  color: var(--demo-heading);
   letter-spacing: -0.03em;
 }
 
 .eyebrow {
   margin: 0 0 0.55rem;
-  color: #7dd3fc;
+  color: var(--demo-accent);
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -136,7 +262,7 @@ select:focus-visible {
 .lede {
   max-width: 54ch;
   margin: 1.25rem 0 1.75rem;
-  color: #bfdbfe;
+  color: var(--demo-lede);
   font-size: 1.05rem;
   line-height: 1.6;
 }
@@ -151,9 +277,9 @@ select:focus-visible {
 .capability-card,
 .copy-card {
   padding: 15px;
-  border: 1px solid rgb(148 163 184 / 14%);
+  border: 1px solid var(--demo-line);
   border-radius: 16px;
-  background: rgb(30 41 59 / 66%);
+  background: var(--demo-panel);
   box-shadow: inset 0 1px rgb(255 255 255 / 4%);
 }
 
@@ -164,13 +290,13 @@ select:focus-visible {
 
 .metric span,
 .capability-card code {
-  color: #94a3b8;
+  color: var(--demo-muted);
   font-size: 0.72rem;
 }
 
 .metric strong {
   overflow: hidden;
-  color: #f8fafc;
+  color: var(--demo-heading);
   font-size: 0.92rem;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -189,10 +315,10 @@ select:focus-visible {
   align-items: center;
   gap: 14px;
   padding: 16px;
-  border: 1px solid rgb(148 163 184 / 14%);
+  border: 1px solid var(--demo-line);
   border-radius: 18px;
   color: inherit;
-  background: rgb(30 41 59 / 58%);
+  background: var(--demo-panel-soft);
   text-decoration: none;
 }
 
@@ -212,7 +338,7 @@ select:focus-visible {
 .feature-link p,
 .history-card p {
   margin: 4px 0 0;
-  color: #94a3b8;
+  color: var(--demo-muted);
   font-size: 0.82rem;
   line-height: 1.4;
 }
@@ -222,21 +348,21 @@ select:focus-visible {
 }
 
 .copy-card p {
-  color: #94a3b8;
+  color: var(--demo-muted);
 }
 
 .copy-card [data-hf-selectable] {
   padding: 10px;
   border-radius: 10px;
-  color: #e0f2fe;
-  background: rgb(14 116 144 / 20%);
+  color: var(--demo-selectable);
+  background: var(--demo-selectable-bg);
 }
 
 .bottom-nav {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   min-height: 61px;
-  border-top: 1px solid rgb(148 163 184 / 16%);
+  border-top: 1px solid var(--demo-line);
   background: transparent;
   backdrop-filter: blur(20px) saturate(1.35);
 }
@@ -259,7 +385,7 @@ select:focus-visible {
 }
 
 .bottom-nav a.active {
-  color: #7dd3fc;
+  color: var(--demo-accent);
 }
 
 .route-direction {
@@ -269,8 +395,8 @@ select:focus-visible {
   right: max(8px, var(--hf-safe-right));
   padding: 4px 7px;
   border-radius: 999px;
-  color: #94a3b8;
-  background: rgb(2 6 23 / 72%);
+  color: var(--demo-muted);
+  background: var(--demo-route);
   font-size: 0.62rem;
   pointer-events: none;
 }
@@ -282,7 +408,7 @@ select:focus-visible {
 }
 
 .form-row > span {
-  color: #bae6fd;
+  color: var(--demo-accent-soft);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -292,10 +418,10 @@ select:focus-visible {
   width: 100%;
   min-height: 48px;
   padding: 12px 14px;
-  border: 1px solid rgb(148 163 184 / 24%);
+  border: 1px solid var(--demo-line-strong);
   border-radius: 13px;
-  color: #f8fafc;
-  background: rgb(15 23 42 / 75%);
+  color: var(--demo-heading);
+  background: var(--demo-input);
   appearance: none;
 }
 
@@ -303,7 +429,7 @@ select:focus-visible {
   min-height: 62px;
   padding: 14px;
   border-left: 2px solid #2563eb;
-  color: #94a3b8;
+  color: var(--demo-muted);
 }
 
 .composer {
@@ -312,7 +438,7 @@ select:focus-visible {
   gap: 8px;
   min-height: 61px;
   padding: 8px 12px;
-  border-top: 1px solid rgb(148 163 184 / 20%);
+  border-top: 1px solid var(--demo-line-strong);
   background: transparent;
   backdrop-filter: blur(18px);
 }
@@ -322,13 +448,13 @@ select:focus-visible {
   margin: 18px 0 8px;
   padding: 7px 10px;
   border-radius: 999px;
-  color: #bbf7d0;
-  background: rgb(22 101 52 / 40%);
+  color: var(--demo-success);
+  background: var(--demo-success-bg);
   font: 700 0.75rem ui-monospace, monospace;
 }
 
 .history-card > span {
-  color: #bae6fd;
+  color: var(--demo-accent-soft);
   font-size: 0.8rem;
 }
 
@@ -368,7 +494,7 @@ select:focus-visible {
 }
 
 .error-text {
-  color: #fecaca;
+  color: var(--demo-error);
   overflow-wrap: anywhere;
 }
 
@@ -385,10 +511,10 @@ select:focus-visible {
   width: min(620px, calc(100% - max(12px, var(--hf-safe-left)) - max(12px, var(--hf-safe-right))));
   margin: 0 auto;
   padding: 12px;
-  border: 1px solid rgb(125 211 252 / 22%);
+  border: 1px solid var(--demo-line-strong);
   border-radius: 18px;
-  background: rgb(15 23 42 / 96%);
-  box-shadow: 0 18px 50px rgb(2 6 23 / 55%);
+  background: var(--demo-toast);
+  box-shadow: 0 18px 50px var(--demo-shadow);
   backdrop-filter: blur(20px);
 }
 
@@ -399,7 +525,7 @@ select:focus-visible {
 }
 
 .nudge span {
-  color: #94a3b8;
+  color: var(--demo-muted);
   font-size: 0.72rem;
 }
 
@@ -410,7 +536,7 @@ select:focus-visible {
 }
 
 .nudge .quiet {
-  color: #94a3b8;
+  color: var(--demo-muted);
   background: transparent;
 }
 
@@ -426,9 +552,9 @@ select:focus-visible {
   padding: 24px;
   place-content: center;
   place-items: center;
-  color: #dbeafe;
+  color: var(--demo-offline);
   text-align: center;
-  background: #0f172a;
+  background: var(--demo-offline-bg);
 }
 
 .offline-page > span {
@@ -439,9 +565,9 @@ select:focus-visible {
   .bottom-nav {
     width: min(560px, calc(100% - 32px));
     margin: 0 auto 12px;
-    border: 1px solid rgb(148 163 184 / 18%);
+    border: 1px solid var(--demo-line);
     border-radius: 18px;
-    box-shadow: 0 14px 50px rgb(2 6 23 / 45%);
+    box-shadow: 0 14px 50px var(--demo-shadow);
   }
 
   [data-hf-dock] {
