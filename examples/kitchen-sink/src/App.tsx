@@ -83,6 +83,7 @@ function ApplicationShell() {
       >
         <HomeframeOfflineBoundary offline={<OfflinePage />}>
           <AppScrollView
+            key={route.match?.route.id}
             className="page-scroll"
             scrollKey={scrollKey}
             navigationType={direction}

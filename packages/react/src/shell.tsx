@@ -185,12 +185,16 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
       ref.current.scrollTop = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
     }, [navigationType, scrollBehavior, scrollKey]);
 
-    // Layout cleanup runs while React still has the outgoing DOM node attached
-    // to the ref. Passive cleanup runs after ref detachment, losing scrollTop
-    // when applications mount a separate AppScrollView for each route.
-    useLayoutEffect(() => () => {
-      const key = activeScrollKey.current;
-      if (key && ref.current) scrollPositions.set(key, ref.current.scrollTop);
+    // Keep the mounted node in the cleanup closure. React detaches object refs
+    // during the mutation phase before layout cleanup runs in a real browser,
+    // so reading ref.current here loses route-scoped scroll positions even
+    // though jsdom leaves the ref populated long enough to mask the defect.
+    useLayoutEffect(() => {
+      const mountedNode = ref.current;
+      return () => {
+        const key = activeScrollKey.current;
+        if (key && mountedNode) scrollPositions.set(key, mountedNode.scrollTop);
+      };
     }, []);
 
     useEffect(() => {

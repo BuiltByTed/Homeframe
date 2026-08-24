@@ -71,7 +71,7 @@ test('a vertical drag beginning on a dock input scrolls content without focusing
   await expect(composer).toBeFocused();
 });
 
-test('navigates through real history without reloading the shell and restores scroll', async ({ page }) => {
+test('route-scoped scroll views restore through real history without reloading the shell', async ({ page }) => {
   await page.evaluate(() => { (window as Window & { __documentToken?: string }).__documentToken = crypto.randomUUID(); });
   const token = await page.evaluate(() => (window as Window & { __documentToken?: string }).__documentToken);
   await page.locator('.bottom-nav').getByRole('link', { name: /History/ }).click();
