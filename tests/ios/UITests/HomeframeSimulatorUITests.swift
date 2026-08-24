@@ -254,16 +254,17 @@ final class HomeframeSimulatorUITests: XCTestCase {
 
     @MainActor
     func testSafariBrowserModeKeepsInteractiveControlsClearOfBrowserChrome() throws {
-        let host = XCUIApplication()
-        host.launchEnvironment["HOMEFRAME_TEST_URL"] = ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]
-            ?? "http://127.0.0.1:4180/"
-        host.launch()
-        let openButton = host.buttons["open-homeframe-in-safari"]
-        XCTAssertTrue(openButton.waitForExistence(timeout: 10))
-        openButton.tap()
-
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 15))
+        safari.launch()
+        let address = safari.textFields["Address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        address.tap()
+        address.typeText(ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]
+            ?? "http://127.0.0.1:4180/")
+        let go = safari.keyboards.buttons["go"]
+        XCTAssertTrue(go.waitForExistence(timeout: 5))
+        go.tap()
+
         let header = safari.staticTexts["Homeframe"]
         let main = safari.otherElements["main"]
         let bottomLink = safari.links
