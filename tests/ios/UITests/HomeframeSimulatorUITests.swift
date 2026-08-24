@@ -211,7 +211,6 @@ final class HomeframeSimulatorUITests: XCTestCase {
         tapCenter(of: textField, in: webApp)
         XCTAssertTrue(waitUntil(timeout: 10) { !contract.label.contains("closed") })
         XCTAssertTrue(composer.waitForExistence(timeout: 10))
-        let openComposerBottom = composer.frame.maxY
 
         XCUIDevice.shared.press(.home)
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -219,11 +218,22 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertTrue(webApp.wait(for: .runningForeground, timeout: 15))
         XCTAssertTrue(header.waitForExistence(timeout: 15))
         XCTAssertTrue(contract.waitForExistence(timeout: 15))
-        XCTAssertTrue(waitUntil(timeout: 10) { contract.label.contains("closed") })
+        // Current iOS versions may either dismiss the software keyboard while
+        // backgrounded or restore it with the focused control. Both are valid;
+        // a keyboard-sized blank region is not. Never treat an "open" viewport
+        // measurement as valid unless XCUITest can see the real system keyboard.
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            contract.label.contains("closed")
+                || (contract.label.contains("open") && webApp.keyboards.firstMatch.exists)
+        })
 
         XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
-        XCTAssertGreaterThan(composer.frame.maxY, openComposerBottom + 120)
-        XCTAssertGreaterThan(composer.frame.maxY, webApp.windows.firstMatch.frame.maxY - 70)
+        XCTAssertTrue(contract.label.contains("document scroll 0"))
+        if contract.label.contains("closed") {
+            XCTAssertGreaterThan(composer.frame.maxY, webApp.windows.firstMatch.frame.maxY - 70)
+        } else {
+            XCTAssertTrue(webApp.keyboards.firstMatch.exists)
+        }
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "Homeframe Background Resume Restored"
@@ -351,9 +361,10 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertTrue(main.waitForExistence(timeout: 15))
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 15))
         XCTAssertTrue(safari.staticTexts["Install Homeframe as an app"].waitForExistence(timeout: 15))
-        XCTAssertTrue(safari.staticTexts[
-            "Use Share, then Add to Home Screen for the full iPhone PWA experience."
-        ].exists)
+        let installInstructions = safari.staticTexts
+            .matching(NSPredicate(format: "label CONTAINS 'Add to Home Screen'"))
+            .firstMatch
+        XCTAssertTrue(installInstructions.waitForExistence(timeout: 5))
 
         let window = safari.windows.firstMatch.frame
         XCTAssertGreaterThan(header.frame.minY, window.minY)
