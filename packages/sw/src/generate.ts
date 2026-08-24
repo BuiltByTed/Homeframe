@@ -211,25 +211,78 @@ function isQuotaError(error) {
     || /quota|storage/i.test(String(error?.message || error || ''));
 }
 
+function cacheKey(request, rule) {
+  if (!rule.rangeRequests || !request.headers.has('range')) return request;
+  const headers = new Headers(request.headers);
+  headers.delete('range');
+  return new Request(request, { headers });
+}
+
+async function rangedResponse(response, rangeHeader) {
+  const match = /^bytes=(\\d*)-(\\d*)$/.exec(rangeHeader.trim());
+  const buffer = await response.arrayBuffer();
+  const total = buffer.byteLength;
+  const headers = new Headers(response.headers);
+  headers.delete('content-encoding');
+  headers.set('accept-ranges', 'bytes');
+  if (!match || (!match[1] && !match[2])) {
+    headers.set('content-range', 'bytes */' + total);
+    headers.set('content-length', '0');
+    return new Response(null, { status: 416, headers });
+  }
+
+  let start;
+  let end;
+  if (!match[1]) {
+    const suffix = Number(match[2]);
+    if (!Number.isInteger(suffix) || suffix <= 0) {
+      headers.set('content-range', 'bytes */' + total);
+      headers.set('content-length', '0');
+      return new Response(null, { status: 416, headers });
+    }
+    start = Math.max(0, total - suffix);
+    end = total - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] ? Math.min(Number(match[2]), total - 1) : total - 1;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start >= total || end < start) {
+    headers.set('content-range', 'bytes */' + total);
+    headers.set('content-length', '0');
+    return new Response(null, { status: 416, headers });
+  }
+
+  const body = buffer.slice(start, end + 1);
+  headers.set('content-range', 'bytes ' + start + '-' + end + '/' + total);
+  headers.set('content-length', String(body.byteLength));
+  return new Response(body, { status: 206, statusText: 'Partial Content', headers });
+}
+
 async function cacheMatch(request, rule) {
   const cacheName = HF.runtimePrefix + rule.cacheName;
   const cache = await caches.open(cacheName);
-  const response = await cache.match(request);
+  const key = cacheKey(request, rule);
+  const response = await cache.match(key);
   if (response) await touchMeta(cacheName, request.url, false);
-  return response;
+  const range = rule.rangeRequests ? request.headers.get('range') : null;
+  return response && range ? rangedResponse(response, range) : response;
 }
 
 async function cachePut(request, response, rule) {
   if (!responseAllowed(response, rule)) return response;
+  // A 206 response is only a fragment and must never replace the full cached
+  // object. Servers that ignore Range and return 200 can still seed the cache.
+  if (rule.rangeRequests && response.status === 206) return response;
   const cacheName = HF.runtimePrefix + rule.cacheName;
   const cache = await caches.open(cacheName);
+  const key = cacheKey(request, rule);
   try {
-    await cache.put(request, response.clone());
+    await cache.put(key, response.clone());
   } catch (error) {
     if (!isQuotaError(error)) return response;
     await evictOldestRuntimeEntries(rule).catch(() => undefined);
     try {
-      await cache.put(request, response.clone());
+      await cache.put(key, response.clone());
     } catch {
       return response;
     }

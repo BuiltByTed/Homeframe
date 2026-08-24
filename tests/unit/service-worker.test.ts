@@ -17,6 +17,7 @@ describe('service-worker generator', () => {
       cacheName: 'images',
       maxEntries: 8,
       maxAgeSeconds: 600,
+      rangeRequests: true,
     }],
     notifications: {
       defaultTitle: 'Test',
@@ -36,6 +37,11 @@ describe('service-worker generator', () => {
     expect(worker).toContain('homeframe-cache-meta');
     expect(worker).toContain('maxAgeSeconds');
     expect(worker).toContain('maxEntries');
+    expect(worker).toContain('rangedResponse');
+    expect(worker).toContain('^bytes=(\\d*)-(\\d*)$');
+    expect(worker).toContain("status: 206, statusText: 'Partial Content'");
+    expect(worker).toContain('response.status === 206');
+    expect(() => new Function(worker)).not.toThrow();
     expect(worker).toContain("new Response('Offline'");
   });
 

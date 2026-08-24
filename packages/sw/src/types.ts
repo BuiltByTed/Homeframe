@@ -21,6 +21,8 @@ export interface SerializableRuntimeCacheRule {
   maxAgeSeconds: number;
   statuses?: number[];
   responseTypes?: Response['type'][];
+  /** Serve a cached full response as a single-range 206 response when requested. */
+  rangeRequests?: boolean;
 }
 
 export interface NotificationWorkerConfig {
