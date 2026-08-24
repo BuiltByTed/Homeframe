@@ -9,6 +9,7 @@ import {
 } from '@builtbyted/sw';
 import { generateAssets, joinBase, type GeneratedAssetSet } from './assets.js';
 import { createManifest, runtimeCacheOverlapWarnings, validateConfig } from './manifest.js';
+import { bootSplashMarkup } from './splash.js';
 import type {
   GeneratedHomeframeAsset,
   HomeframeConfig,
@@ -105,7 +106,11 @@ export function homeframe(config: HomeframeConfig): Plugin {
         `<style id="homeframe-critical"${nonceAttribute}>${critical}</style>`,
         `<script id="homeframe-bootstrap"${nonceAttribute}>${boot}</script>`,
       ].filter(Boolean).join('\n');
-      const splash = `<div id="homeframe-boot-splash" aria-hidden="true"><img src="${generated.inlineLogo}" alt=""><span>${escapeHtml(config.splash?.title ?? config.app.name)}</span></div>`;
+      const splash = bootSplashMarkup({
+        inlineLogo: generated.inlineLogo,
+        title: config.splash?.title,
+        appName: config.app.name,
+      });
       return html.replace(/<head([^>]*)>/i, `<head$1>\n${head}`)
         .replace(/<body([^>]*)>/i, `<body$1>\n${splash}`);
     },

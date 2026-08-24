@@ -336,6 +336,12 @@
     scrollbar-gutter: stable;
   }
 
+  :root[data-hf-keyboard-target='content'] [data-hf-scroll-view]::after {
+    display: block;
+    height: var(--hf-keyboard-height);
+    content: '';
+  }
+
   [data-hf-dock] {
     position: relative;
     z-index: 20;
@@ -474,7 +480,7 @@
   [data-hf-edge-guard] {
     position: absolute;
     top: 0;
-    bottom: 0;
+    bottom: calc(var(--hf-bottom-height) + var(--hf-dock-keyboard-offset));
     width: var(--hf-edge-width, 24px);
     pointer-events: auto;
     touch-action: none;
