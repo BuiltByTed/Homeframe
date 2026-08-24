@@ -41,7 +41,7 @@ describe('scaffold-homeframe-app', () => {
       dependencies: Record<string, string>;
     };
     expect(packageJson.name).toBe('@builtbyted/my-app');
-    expect(packageJson.dependencies['@builtbyted/react']).toBe('0.1.0');
+    expect(packageJson.dependencies['@builtbyted/homeframe']).toBe('0.1.0');
     expect(await readFile(join(target, 'index.html'), 'utf8')).toContain('<title>Ted &amp; Co</title>');
     expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).toContain('name: "Ted & Co"');
 

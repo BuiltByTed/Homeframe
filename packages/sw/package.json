@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/sw",
   "version": "0.1.0",
+  "private": true,
   "description": "Homeframe service-worker generation, atomic updates, offline caching, push, and badging.",
   "type": "module",
   "sideEffects": false,

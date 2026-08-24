@@ -1,4 +1,4 @@
-import { defineHomeframe } from '@builtbyted/vite';
+import { defineHomeframe } from '@builtbyted/homeframe/vite';
 
 export default defineHomeframe({
   app: {

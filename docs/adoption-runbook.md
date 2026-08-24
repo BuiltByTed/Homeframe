@@ -43,16 +43,16 @@ Do not unregister the current worker or clear Cache Storage. Those actions stran
 
 ## 2. Add Homeframe as the upstream dependency
 
-For released packages:
+Install the unified released package:
 
 ```bash
-npm install @builtbyted/runtime @builtbyted/react @builtbyted/router @builtbyted/sw
-npm install -D @builtbyted/vite @builtbyted/cli @builtbyted/eslint-plugin
+npm install @builtbyted/homeframe
+npm install -D vite @vitejs/plugin-react typescript
 ```
 
 For a monorepo checkout, use npm workspaces as this repository does. For a private fork, publish immutable package versions to the organization's registry and depend on those versions; do not copy framework source into the application. Lock exact versions during migration and let the lockfile record one coherent Homeframe release.
 
-Add a Renovate/Dependabot group for all `@builtbyted/*` packages so they update together. Upgrade the dependency in a normal application branch; do not use a Git upstream merge that can overwrite product code or generated configuration.
+Keep `@builtbyted/homeframe` pinned to an exact version. Upgrade the dependency in a normal application branch; do not use a Git upstream merge that can overwrite product code or generated configuration.
 
 Build the packages and app in CI before changing runtime behavior:
 
@@ -84,7 +84,7 @@ Diff `index.html`, `manifest.webmanifest`, `generated/asset-report.json`, and al
 
 ## 4. Move layout ownership to Homeframe
 
-Import `@builtbyted/react/styles.css` once, as early as possible. Wrap the React tree in `HomeframeProvider` and the visible application in one `AppViewport`.
+Import `@builtbyted/homeframe/styles.css` once, as early as possible. Wrap the React tree in `HomeframeProvider` and the visible application in one `AppViewport`.
 
 Make `html`, `body`, and `#homeframe-root` non-scrolling. Remove `100vh`/`100dvh` app-shell sizing, global Visual Viewport listeners, body scroll locks, fixed-body keyboard hacks, and duplicated `env(safe-area-inset-*)` padding from migrated shell elements.
 

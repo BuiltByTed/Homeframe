@@ -1,0 +1,95 @@
+{
+  "name": "@builtbyted/homeframe",
+  "version": "0.1.0",
+  "description": "A React framework for stable iOS Home Screen and desktop progressive web apps.",
+  "type": "module",
+  "sideEffects": [
+    "./dist/**/*.css"
+  ],
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "homeframe": "./dist/cli/index.js"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js"
+    },
+    "./router": {
+      "types": "./dist/router/index.d.ts",
+      "import": "./dist/router/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js"
+    },
+    "./runtime/styles.css": "./dist/runtime/styles.css",
+    "./sw": {
+      "types": "./dist/sw/index.d.ts",
+      "import": "./dist/sw/index.js"
+    },
+    "./vite": {
+      "types": "./dist/vite/index.d.ts",
+      "import": "./dist/vite/index.js"
+    },
+    "./eslint-plugin": {
+      "types": "./dist/eslint-plugin/index.d.ts",
+      "import": "./dist/eslint-plugin/index.js"
+    },
+    "./styles.css": "./dist/react/styles.css",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "build": "tsx ../../scripts/build-homeframe-package.ts"
+  },
+  "dependencies": {
+    "commander": "15.0.0",
+    "playwright": "1.62.1",
+    "sharp": "0.35.3"
+  },
+  "peerDependencies": {
+    "eslint": ">=9 <11",
+    "react": ">=18 <20",
+    "react-dom": ">=18 <20",
+    "vite": ">=7 <9"
+  },
+  "peerDependenciesMeta": {
+    "eslint": {
+      "optional": true
+    }
+  },
+  "keywords": [
+    "homeframe",
+    "react",
+    "pwa",
+    "ios",
+    "service-worker",
+    "vite",
+    "router"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/homeframe"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": {
+    "url": "https://github.com/BuiltByTed/Homeframe/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

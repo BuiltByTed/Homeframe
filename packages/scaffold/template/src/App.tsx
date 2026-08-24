@@ -7,14 +7,12 @@ import {
   HomeframeInput,
   HomeframeProvider,
   SelectableText,
-} from '@builtbyted/react';
-import {
   HomeframeRouterProvider,
   NavLink,
   RouterOutlet,
   createHomeframeRouter,
   useRouteScrollRestoration,
-} from '@builtbyted/router';
+} from '@builtbyted/homeframe';
 
 const appBase = import.meta.env.BASE_URL.endsWith('/')
   ? import.meta.env.BASE_URL

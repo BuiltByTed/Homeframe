@@ -17,14 +17,14 @@ that runbook and `homeframe.config.ts` as required project context.
   Homeframe CSS variables and hooks.
 - Do not register a service worker, author a web manifest, or add viewport,
   theme-color, Apple icon, startup-image, or app-capable tags. The
-  `@builtbyted/vite` adapter generates and owns them.
+  `@builtbyted/homeframe/vite` adapter generates and owns them.
 - Preserve `app.id`, `app.scope`, `app.startUrl`, and the deployed worker URL once
   the app has users. These values are installation identity, not ordinary config.
 - Use `HomeframeInput`, `HomeframeTextarea`, or `HomeframeSelect` for editable
   controls. All rendered editable text must be at least 16 CSS px.
 - Use the Homeframe router, `Link`/`NavLink`, route scroll restoration, and URL
   state/permalinks. Do not replace it with page reloads or a second router.
-- Keep all `@builtbyted/*` packages on the same exact version.
+- Keep `@builtbyted/homeframe` pinned to an exact version.
 - Keep application code in strict TypeScript. Do not add JavaScript source files.
 
 ## Change workflow

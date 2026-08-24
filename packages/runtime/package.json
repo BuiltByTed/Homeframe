@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/runtime",
   "version": "0.1.0",
+  "private": true,
   "description": "Homeframe viewport, safe-area, keyboard, lifecycle, install, and runtime event primitives.",
   "type": "module",
   "sideEffects": false,

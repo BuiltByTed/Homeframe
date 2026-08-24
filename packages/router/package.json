@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/router",
   "version": "0.1.0",
+  "private": true,
   "description": "Homeframe same-document routing, edge gestures, deep links, permalinks, and scroll restoration.",
   "type": "module",
   "sideEffects": false,

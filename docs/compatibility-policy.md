@@ -1,7 +1,7 @@
 # Homeframe compatibility and release policy
 
-Homeframe packages are released as one coherent version. Applications should pin
-all `@builtbyted/*` packages together and update them in one lockfile change.
+Homeframe is released as one coherent `@builtbyted/homeframe` package.
+Applications should pin it exactly and update it in one lockfile change.
 
 ## Current preview line
 
@@ -47,4 +47,3 @@ preserving identity within each environment. Start a migration with `manual` or
 `prompt` worker activation, prove an upgrade from the actually deployed prior
 worker, and promote the same immutable artifact. Do not run stable and canary
 workers over competing scopes on one origin.
-

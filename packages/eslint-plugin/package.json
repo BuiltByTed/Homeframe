@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/eslint-plugin",
   "version": "0.1.0",
+  "private": true,
   "description": "ESLint rules that protect Homeframe viewport, safe-area, and input ownership boundaries.",
   "type": "module",
   "files": ["dist"],

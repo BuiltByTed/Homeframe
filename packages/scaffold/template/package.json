@@ -12,16 +12,11 @@
     "check": "npm run build && npm run doctor"
   },
   "dependencies": {
-    "@builtbyted/react": "0.1.0",
-    "@builtbyted/router": "0.1.0",
-    "@builtbyted/runtime": "0.1.0",
-    "@builtbyted/sw": "0.1.0",
+    "@builtbyted/homeframe": "0.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@builtbyted/cli": "0.1.0",
-    "@builtbyted/vite": "0.1.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.1.0",

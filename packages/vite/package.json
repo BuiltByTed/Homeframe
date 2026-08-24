@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/vite",
   "version": "0.1.0",
+  "private": true,
   "description": "Vite adapter for Homeframe metadata, icons, launch assets, manifest, bootstrap, and service worker.",
   "type": "module",
   "sideEffects": false,

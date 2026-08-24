@@ -179,8 +179,8 @@ close. `window.scrollY` must always be zero.
 
 ## 11. Release and rollback
 
-Keep every `@builtbyted/*` dependency on one exact version and update them in one
-lockfile change. Build once, test that artifact, and promote the same files.
+Keep `@builtbyted/homeframe` on an exact version and update it in one lockfile
+change. Build once, test that artifact, and promote the same files.
 Deploy versioned assets before revalidating HTML and the worker. Retain assets
 used by both the active and previous worker throughout the rollback window.
 

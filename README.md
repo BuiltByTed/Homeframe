@@ -72,17 +72,17 @@ The command refuses to overwrite a non-empty directory.
 
 ## Add Homeframe to a Vite React app
 
-Install the framework packages:
+Install the framework package:
 
 ```bash
-npm install @builtbyted/runtime @builtbyted/react @builtbyted/router @builtbyted/sw
-npm install -D @builtbyted/vite @builtbyted/cli
+npm install @builtbyted/homeframe
+npm install -D vite @vitejs/plugin-react typescript
 ```
 
 Create `homeframe.config.ts`:
 
 ```ts
-import { defineHomeframe } from '@builtbyted/vite';
+import { defineHomeframe } from '@builtbyted/homeframe/vite';
 
 export default defineHomeframe({
   app: {
@@ -204,7 +204,7 @@ Add the adapter to Vite:
 ```ts
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import { homeframe } from '@builtbyted/vite';
+import { homeframe } from '@builtbyted/homeframe/vite';
 import homeframeConfig from './homeframe.config';
 
 export default defineConfig({ plugins: [react(), homeframe(homeframeConfig)] });
@@ -223,7 +223,7 @@ Use an intentionally empty document head and a stable root:
 Import the framework styles once and contain the app in its shell:
 
 ```tsx
-import '@builtbyted/react/styles.css';
+import '@builtbyted/homeframe/styles.css';
 import {
   AppHeader,
   AppScrollView,
@@ -231,7 +231,7 @@ import {
   HomeframeInput,
   HomeframeProvider,
   ViewportDock,
-} from '@builtbyted/react';
+} from '@builtbyted/homeframe';
 
 export function Root() {
   return (
@@ -287,13 +287,11 @@ release matrix in the spec.
 
 All authored JavaScript-runtime source, Node tooling, tests, and configuration are strict TypeScript. `npm run check:typescript` rejects `.js`, `.jsx`, `.mjs`, or `.cjs` source outside generated/dependency directories. CSS, HTML, JSON, and the native XCUITest harness remain in their platform-native formats; generated package and app output is JavaScript under `dist`.
 
-## Workspace packages
+## npm packages
 
-- `@builtbyted/runtime`: viewport, safe area, keyboard, lifecycle, install, and local events.
-- `@builtbyted/react`: shell primitives, inputs, readiness/snapshot UI, headless nudges, diagnostics, checkpoints, updates, and badges.
-- `@builtbyted/router`: scoped History API routing, real links, direction, loaders, prefetch, navigation-gesture state, deep links, permalinks, and scroll keys.
-- `@builtbyted/sw`: generated worker, update client, runtime caching, push transport, and badging.
-- `@builtbyted/vite`: validation, document metadata, icons, startup images, manifest, bootstrap, and worker generation.
-- `@builtbyted/cli`: `init`, `migrate`, `upgrade`, and `doctor`.
-- `@builtbyted/eslint-plugin`: checks for unsafe viewport and input patterns.
-- `scaffold-homeframe-app`: runnable starter generator with AI coding guardrails.
+- `@builtbyted/homeframe`: the complete framework. React shell and router APIs are
+  exported at the package root; advanced APIs are available from `/react`,
+  `/router`, `/runtime`, `/sw`, `/vite`, and `/eslint-plugin`. It also installs the
+  `homeframe` CLI binary.
+- `scaffold-homeframe-app`: runnable starter generator with AI coding guardrails,
+  used through `npx scaffold-homeframe-app`.

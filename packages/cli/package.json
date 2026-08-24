@@ -1,6 +1,7 @@
 {
   "name": "@builtbyted/cli",
   "version": "0.1.0",
+  "private": true,
   "description": "Build, migrate, upgrade, and diagnose Homeframe applications.",
   "type": "module",
   "files": ["dist"],

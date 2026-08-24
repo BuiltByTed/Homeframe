@@ -1,8 +1,8 @@
 declare module 'virtual:homeframe/config' {
-  import type { HomeframeAppConfig } from '@builtbyted/vite';
-  import type { ServiceWorkerClientConfig } from '@builtbyted/sw';
-  import type { HomeframeReactConfig } from '@builtbyted/react';
-  import type { HomeframeRouterOptions } from '@builtbyted/router';
+  import type { HomeframeAppConfig } from '@builtbyted/homeframe/vite';
+  import type { ServiceWorkerClientConfig } from '@builtbyted/homeframe/sw';
+  import type { HomeframeReactConfig } from '@builtbyted/homeframe/react';
+  import type { HomeframeRouterOptions } from '@builtbyted/homeframe/router';
 
   const config: {
     app: HomeframeAppConfig;
