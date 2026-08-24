@@ -171,7 +171,7 @@ function jsxStyleProperty(node: AstNode, propertyName: string): unknown {
 }
 
 const plugin = {
-  meta: { name: '@homeframe/eslint-plugin', version: '0.1.0' },
+  meta: { name: '@builtbyted/eslint-plugin', version: '0.1.0' },
   rules: {
     'no-raw-history': noRawHistory,
     'no-raw-viewport': noRawViewport,

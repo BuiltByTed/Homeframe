@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { homeframe } from '@homeframe/vite';
+import { homeframe } from '@builtbyted/vite';
 import homeframeConfig from './homeframe.config.js';
 
 const base = process.env.HOMEFRAME_BASE_PATH ?? '/';

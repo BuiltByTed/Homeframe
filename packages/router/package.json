@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/router",
+  "name": "@builtbyted/router",
   "version": "0.1.0",
+  "description": "Homeframe same-document routing, edge gestures, deep links, permalinks, and scroll restoration.",
   "type": "module",
   "sideEffects": false,
   "files": ["dist"],
@@ -17,9 +18,19 @@
     "build": "tsup src/index.tsx --format esm --dts --sourcemap --external react --clean"
   },
   "dependencies": {
-    "@homeframe/runtime": "0.1.0"
+    "@builtbyted/runtime": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=18 <20"
-  }
+  },
+  "keywords": ["homeframe", "react", "router", "pwa", "history"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/router"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

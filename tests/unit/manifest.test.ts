@@ -6,7 +6,7 @@ import {
   homeframe,
   runtimeCacheOverlapWarnings,
   validateConfig,
-} from '@homeframe/vite';
+} from '@builtbyted/vite';
 
 const config = defineHomeframe({
   app: {

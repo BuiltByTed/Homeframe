@@ -4,7 +4,7 @@ Status: Proposed specification | Version: 0.1 | Date: 2026-08-23
 
 Primary targets: installed iOS/iPadOS web apps and installed desktop Chrome PWAs
 
-> `Homeframe` and the `@homeframe/*` package names are working names used to make
+> `Homeframe` and the `@builtbyted/*` package names are working names used to make
 > this specification concrete. They are not assumed to be available package names.
 
 ## 1. Summary
@@ -149,13 +149,13 @@ The reference implementation is split into replaceable packages:
 
 | Package | Responsibility |
 | --- | --- |
-| `@homeframe/react` | Provider, shell, scroll, dock, lifecycle, nudge hooks, update hooks, error and offline boundaries |
-| `@homeframe/runtime` | Pre-React boot runtime, normalized viewport store, capability detection, lifecycle state, diagnostics |
-| `@homeframe/router` | History router and adapter contract; a maintained React Router adapter SHOULD also ship |
-| `@homeframe/sw` | Service-worker source, page-side registration/update client, push and badge helpers |
-| `@homeframe/vite` | Reference build adapter, generated HTML/manifest/assets, revision injection, development emulation |
-| `@homeframe/cli` | `init`, `migrate`, `doctor`, asset generation, upgrade codemods, and device-test utilities |
-| `@homeframe/eslint-plugin` | Rules for unsafe inputs, body scrolling, untracked fixed positioning, and raw History API use |
+| `@builtbyted/react` | Provider, shell, scroll, dock, lifecycle, nudge hooks, update hooks, error and offline boundaries |
+| `@builtbyted/runtime` | Pre-React boot runtime, normalized viewport store, capability detection, lifecycle state, diagnostics |
+| `@builtbyted/router` | History router and adapter contract; a maintained React Router adapter SHOULD also ship |
+| `@builtbyted/sw` | Service-worker source, page-side registration/update client, push and badge helpers |
+| `@builtbyted/vite` | Reference build adapter, generated HTML/manifest/assets, revision injection, development emulation |
+| `@builtbyted/cli` | `init`, `migrate`, `doctor`, asset generation, upgrade codemods, and device-test utilities |
+| `@builtbyted/eslint-plugin` | Rules for unsafe inputs, body scrolling, untracked fixed positioning, and raw History API use |
 
 Applications MAY use the viewport and React packages without the Homeframe router,
 provided their router passes the history conformance tests. The build adapter MUST
@@ -191,8 +191,8 @@ files MUST contain a banner and fail `doctor` if a source copy is being edited.
 ### 7.1 Proposed setup
 
 ```sh
-pnpm add @homeframe/react @homeframe/router
-pnpm add -D @homeframe/vite @homeframe/cli
+pnpm add @builtbyted/react @builtbyted/router
+pnpm add -D @builtbyted/vite @builtbyted/cli
 pnpm homeframe init
 ```
 
@@ -211,7 +211,7 @@ pnpm homeframe init
 
 ```ts
 // homeframe.config.ts
-import { defineHomeframe } from '@homeframe/vite';
+import { defineHomeframe } from '@builtbyted/vite';
 
 export default defineHomeframe({
   app: {
@@ -1460,7 +1460,7 @@ contain sensitive data, and which identifiers must remain stable.
 
 ### Phase 1: add Homeframe only as a dependency
 
-1. Add compatible `@homeframe/*` packages using an exact version or organization
+1. Add compatible `@builtbyted/*` packages using an exact version or organization
    lockfile policy.
 2. Add the build plugin and `homeframe.config.ts`.
 3. Populate configuration from the existing manifest rather than inventing new

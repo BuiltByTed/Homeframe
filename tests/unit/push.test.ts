@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { setAppBadge } from '@homeframe/sw';
+import { setAppBadge } from '@builtbyted/sw';
 
 afterEach(() => {
   Reflect.deleteProperty(navigator, 'setAppBadge');

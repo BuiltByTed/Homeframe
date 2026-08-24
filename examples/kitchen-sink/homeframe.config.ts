@@ -1,4 +1,4 @@
-import { defineHomeframe } from '@homeframe/vite';
+import { defineHomeframe } from '@builtbyted/vite';
 
 const configuredBase = process.env.HOMEFRAME_BASE_PATH ?? '/';
 const scope = `/${configuredBase.replace(/^\/+|\/+$/g, '')}${configuredBase === '/' ? '' : '/'}`;

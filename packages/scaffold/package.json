@@ -1,0 +1,45 @@
+{
+  "name": "scaffold-homeframe-app",
+  "version": "0.1.0",
+  "description": "Create a production-minded Homeframe React PWA with AI coding guardrails.",
+  "type": "module",
+  "files": [
+    "dist",
+    "template"
+  ],
+  "bin": {
+    "scaffold-homeframe-app": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  },
+  "keywords": [
+    "homeframe",
+    "pwa",
+    "react",
+    "vite",
+    "ios",
+    "scaffold"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/scaffold"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": {
+    "url": "https://github.com/BuiltByTed/Homeframe/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

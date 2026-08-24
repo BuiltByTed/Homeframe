@@ -97,7 +97,7 @@ program.command('init')
       const iconPath = resolve(brandDirectory, 'icon.svg');
       if (!existsSync(iconPath)) await writeFile(iconPath, starterIcon(identity.shortName || identity.name || 'H'));
     }
-    await writeFile(output, `import { defineHomeframe } from '@homeframe/vite';\n\nexport default defineHomeframe({\n  app: {\n    id: ${JSON.stringify(identity.id || '/')},\n    name: ${JSON.stringify(identity.name || inventory.packageName || 'My App')},\n    shortName: ${JSON.stringify(identity.shortName || identity.name || inventory.packageName || 'My App')},\n    startUrl: ${JSON.stringify(identity.startUrl || '/')},\n    scope: ${JSON.stringify(identity.scope || '/')},\n    display: ${JSON.stringify(identity.display || 'standalone')},\n    colorScheme: 'system',\n    themeColor: ${JSON.stringify(identity.themeColor || '#172554')},\n    backgroundColor: ${JSON.stringify(identity.backgroundColor || '#172554')},\n    icon: ${JSON.stringify(icon)},\n  },\n  serviceWorker: { update: { mode: 'automatic', reload: 'safe-point' } },\n});\n`);
+    await writeFile(output, `import { defineHomeframe } from '@builtbyted/vite';\n\nexport default defineHomeframe({\n  app: {\n    id: ${JSON.stringify(identity.id || '/')},\n    name: ${JSON.stringify(identity.name || inventory.packageName || 'My App')},\n    shortName: ${JSON.stringify(identity.shortName || identity.name || inventory.packageName || 'My App')},\n    startUrl: ${JSON.stringify(identity.startUrl || '/')},\n    scope: ${JSON.stringify(identity.scope || '/')},\n    display: ${JSON.stringify(identity.display || 'standalone')},\n    colorScheme: 'system',\n    themeColor: ${JSON.stringify(identity.themeColor || '#172554')},\n    backgroundColor: ${JSON.stringify(identity.backgroundColor || '#172554')},\n    icon: ${JSON.stringify(icon)},\n  },\n  serviceWorker: { update: { mode: 'automatic', reload: 'safe-point' } },\n});\n`);
     const reportPath = resolve(root, '.homeframe/init-report.json');
     await mkdir(dirname(reportPath), { recursive: true });
     await writeFile(reportPath, `${JSON.stringify({
@@ -110,13 +110,13 @@ program.command('init')
         viteConfigs: inventory.viteConfigs,
       },
       integration: {
-        vite: "import { homeframe } from '@homeframe/vite'; import homeframeConfig from './homeframe.config'; then add homeframe(homeframeConfig) after react() in plugins.",
-        react: "Import @homeframe/react/styles.css, then wrap the existing app with HomeframeProvider and one AppViewport; move chrome into AppShell only after device baselines exist.",
+        vite: "import { homeframe } from '@builtbyted/vite'; import homeframeConfig from './homeframe.config'; then add homeframe(homeframeConfig) after react() in plugins.",
+        react: "Import @builtbyted/react/styles.css, then wrap the existing app with HomeframeProvider and one AppViewport; move chrome into AppShell only after device baselines exist.",
       },
     }, null, 2)}\n`);
     console.log(`Created ${output}`);
     console.log(`Inventory and non-overwrite integration report written to ${reportPath}`);
-    console.log("Vite diff: import homeframe from @homeframe/vite and add homeframe(homeframeConfig) after react().");
+    console.log("Vite diff: import homeframe from @builtbyted/vite and add homeframe(homeframeConfig) after react().");
     console.log('React diff: import Homeframe styles and wrap the existing root with HomeframeProvider + AppViewport after reviewing the migration report.');
     const diagnostics = await doctorSource(root);
     printDiagnostics(diagnostics, false);
@@ -303,7 +303,7 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
         workerRelativePath = new URL(build.serviceWorker, 'https://homeframe.invalid/').pathname.replace(/^\/+/, '');
       }
     } catch (reason) {
-      diagnostics.push(error('HF_BUILD_INFO_INVALID', `homeframe-build.json is invalid: ${message(reason)}`, 'Rebuild with @homeframe/vite.'));
+      diagnostics.push(error('HF_BUILD_INFO_INVALID', `homeframe-build.json is invalid: ${message(reason)}`, 'Rebuild with @builtbyted/vite.'));
     }
   }
   const workerPath = resolve(dist, workerRelativePath);
@@ -367,14 +367,14 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
       ['HF_SKIP_WAITING', 'configurable activation'],
     ];
     for (const [token, label] of capabilities) {
-      if (!worker.includes(token)) diagnostics.push(error('HF_SW_CAPABILITY', `Worker lacks ${label}.`, 'Regenerate it with @homeframe/vite.'));
+      if (!worker.includes(token)) diagnostics.push(error('HF_SW_CAPABILITY', `Worker lacks ${label}.`, 'Regenerate it with @builtbyted/vite.'));
     }
     const payload = parseGeneratedWorkerPayload(worker);
     if (!payload) {
       diagnostics.push(error('HF_SW_PAYLOAD', 'Worker configuration payload is missing or invalid.', 'Regenerate the worker instead of editing built output.'));
     } else {
       if (payload.notifications && !worker.includes('notificationclick')) {
-        diagnostics.push(error('HF_SW_CAPABILITY', 'Worker lacks configured notification click routing.', 'Regenerate it with @homeframe/vite.'));
+        diagnostics.push(error('HF_SW_CAPABILITY', 'Worker lacks configured notification click routing.', 'Regenerate it with @builtbyted/vite.'));
       }
       const precache = Array.isArray(payload.precache) ? payload.precache : [];
       if (precache.length === 0) diagnostics.push(error('HF_PRECACHE_EMPTY', 'Worker precache is empty.', 'Ensure the Vite build graph is available when Homeframe writes the worker.'));

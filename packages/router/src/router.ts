@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { emitRuntimeEvent, getBuildInfo, getHomeframeRootStyle } from '@homeframe/runtime';
+import { emitRuntimeEvent, getBuildInfo, getHomeframeRootStyle } from '@builtbyted/runtime';
 
 export type NavigationDirection = 'back' | 'forward' | 'replace' | 'push' | 'reload' | 'unknown';
 export type RouteScrollAction = 'reset' | 'restore' | 'preserve';

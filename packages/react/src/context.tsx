@@ -15,13 +15,13 @@ import {
   getLifecycleController,
   getViewportController,
   type ViewportRuntimeOptions,
-} from '@homeframe/runtime';
+} from '@builtbyted/runtime';
 import {
   HomeframeServiceWorkerClient,
   type HttpPushSubscriptionTransportOptions,
   type ServiceWorkerClientConfig,
   type PushSubscriptionTransport,
-} from '@homeframe/sw';
+} from '@builtbyted/sw';
 import { HomeframeNudgeProvider, type HomeframeNudgeConfig } from './nudges.js';
 import { HomeframeReadinessProvider, useHomeframeReadiness } from './lifecycle.js';
 import { useAppLifecycle } from './hooks.js';

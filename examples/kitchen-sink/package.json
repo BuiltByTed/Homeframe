@@ -1,5 +1,5 @@
 {
-  "name": "@homeframe/example",
+  "name": "@builtbyted/example",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,15 +9,15 @@
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
-    "@homeframe/react": "0.1.0",
-    "@homeframe/router": "0.1.0",
-    "@homeframe/runtime": "0.1.0",
-    "@homeframe/sw": "0.1.0",
+    "@builtbyted/react": "0.1.0",
+    "@builtbyted/router": "0.1.0",
+    "@builtbyted/runtime": "0.1.0",
+    "@builtbyted/sw": "0.1.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@homeframe/vite": "0.1.0",
+    "@builtbyted/vite": "0.1.0",
     "@vitejs/plugin-react": "6.1.0",
     "vite": "8.2.2"
   }

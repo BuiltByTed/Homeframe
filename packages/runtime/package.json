@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/runtime",
+  "name": "@builtbyted/runtime",
   "version": "0.1.0",
+  "description": "Homeframe viewport, safe-area, keyboard, lifecycle, install, and runtime event primitives.",
   "type": "module",
   "sideEffects": false,
   "files": ["dist"],
@@ -16,5 +17,15 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean && cp src/styles.css dist/styles.css"
-  }
+  },
+  "keywords": ["homeframe", "pwa", "ios", "viewport", "keyboard"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/runtime"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

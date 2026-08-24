@@ -15,7 +15,7 @@ import {
   useHomeframeReadiness,
   useHomeframeUpdate,
   useNudgeCoordinator,
-} from '@homeframe/react';
+} from '@builtbyted/react';
 
 beforeEach(() => {
   localStorage.clear();

@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/react",
+  "name": "@builtbyted/react",
   "version": "0.1.0",
+  "description": "React shell, viewport, keyboard-dock, lifecycle, update, and capability primitives for Homeframe.",
   "type": "module",
   "sideEffects": ["./dist/styles.css"],
   "files": ["dist"],
@@ -18,11 +19,21 @@
     "build": "tsup src/index.tsx --format esm --dts --sourcemap --external react --external react-dom --clean && cp src/styles.css dist/styles.css"
   },
   "dependencies": {
-    "@homeframe/runtime": "0.1.0",
-    "@homeframe/sw": "0.1.0"
+    "@builtbyted/runtime": "0.1.0",
+    "@builtbyted/sw": "0.1.0"
   },
   "peerDependencies": {
     "react": ">=18 <20",
     "react-dom": ">=18 <20"
-  }
+  },
+  "keywords": ["homeframe", "react", "pwa", "ios", "app-shell"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

@@ -1,4 +1,4 @@
-@import '@homeframe/runtime/styles.css';
+@import '@builtbyted/runtime/styles.css';
 
 @layer homeframe.structure {
   [data-hf-react-splash] {

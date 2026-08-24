@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { getBuildInfo, getRecentRuntimeEvents } from '@homeframe/runtime';
+import { getBuildInfo, getRecentRuntimeEvents } from '@builtbyted/runtime';
 import { useOnlineStatus } from './hooks.js';
 import { useServiceWorker } from './hooks.js';
 

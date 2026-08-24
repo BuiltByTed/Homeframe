@@ -19,7 +19,7 @@ import {
   type UIEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { getHomeframeRootStyle } from '@homeframe/runtime';
+import { getHomeframeRootStyle } from '@builtbyted/runtime';
 import { useHomeframe } from './context.js';
 
 type PolymorphicProps<T extends ElementType> = {

@@ -2,7 +2,7 @@ import { Linter } from 'eslint';
 import { describe, expect, it } from 'vitest';
 import homeframe from '../../packages/eslint-plugin/src/index.js';
 
-describe('@homeframe/eslint-plugin', () => {
+describe('@builtbyted/eslint-plugin', () => {
   it('reports raw history/viewport, document scroll, fixed UI, and unsafe controls', () => {
     const linter = new Linter();
     const messages = linter.verify(`

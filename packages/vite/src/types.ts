@@ -3,7 +3,7 @@ import type {
   NotificationWorkerConfig,
   SerializableRuntimeCacheRule,
   UpdateMode,
-} from '@homeframe/sw';
+} from '@builtbyted/sw';
 
 export interface HomeframePrivateCacheConfig {
   partitionKey(request: Request): string | Promise<string>;

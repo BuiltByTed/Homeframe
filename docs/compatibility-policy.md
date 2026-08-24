@@ -1,7 +1,7 @@
 # Homeframe compatibility and release policy
 
 Homeframe packages are released as one coherent version. Applications should pin
-all `@homeframe/*` packages together and update them in one lockfile change.
+all `@builtbyted/*` packages together and update them in one lockfile change.
 
 ## Current preview line
 

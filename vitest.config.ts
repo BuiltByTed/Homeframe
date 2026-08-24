@@ -6,11 +6,11 @@ const source = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      '@homeframe/runtime': source('./packages/runtime/src/index.ts'),
-      '@homeframe/react': source('./packages/react/src/index.tsx'),
-      '@homeframe/router': source('./packages/router/src/index.tsx'),
-      '@homeframe/sw': source('./packages/sw/src/index.ts'),
-      '@homeframe/vite': source('./packages/vite/src/index.ts'),
+      '@builtbyted/runtime': source('./packages/runtime/src/index.ts'),
+      '@builtbyted/react': source('./packages/react/src/index.tsx'),
+      '@builtbyted/router': source('./packages/router/src/index.tsx'),
+      '@builtbyted/sw': source('./packages/sw/src/index.ts'),
+      '@builtbyted/vite': source('./packages/vite/src/index.ts'),
     },
   },
   test: {

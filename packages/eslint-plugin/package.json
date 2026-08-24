@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/eslint-plugin",
+  "name": "@builtbyted/eslint-plugin",
   "version": "0.1.0",
+  "description": "ESLint rules that protect Homeframe viewport, safe-area, and input ownership boundaries.",
   "type": "module",
   "files": ["dist"],
   "main": "./dist/index.js",
@@ -16,5 +17,15 @@
   },
   "peerDependencies": {
     "eslint": ">=9 <11"
-  }
+  },
+  "keywords": ["homeframe", "eslint", "pwa", "ios", "viewport"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/eslint-plugin"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

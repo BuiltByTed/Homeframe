@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { getHomeframeRootStyle } from '@homeframe/runtime';
+import { getHomeframeRootStyle } from '@builtbyted/runtime';
 import {
   AppScrollView,
   AppShell,
@@ -35,7 +35,7 @@ import {
   useStateCheckpoint,
   useViewport,
   type AppHeaderPlacement,
-} from '@homeframe/react';
+} from '@builtbyted/react';
 import {
   HomeframeRouterProvider,
   Link,
@@ -49,7 +49,7 @@ import {
   useRouteScrollRestoration,
   useRouterSnapshot,
   type RouteMatch,
-} from '@homeframe/router';
+} from '@builtbyted/router';
 
 const appBase = import.meta.env.BASE_URL.endsWith('/')
   ? import.meta.env.BASE_URL

@@ -18,11 +18,11 @@
     "sourceMap": true,
     "baseUrl": ".",
     "paths": {
-      "@homeframe/runtime": ["packages/runtime/src/index.ts"],
-      "@homeframe/react": ["packages/react/src/index.tsx"],
-      "@homeframe/router": ["packages/router/src/index.tsx"],
-      "@homeframe/sw": ["packages/sw/src/index.ts"],
-      "@homeframe/vite": ["packages/vite/src/index.ts"]
+      "@builtbyted/runtime": ["packages/runtime/src/index.ts"],
+      "@builtbyted/react": ["packages/react/src/index.tsx"],
+      "@builtbyted/router": ["packages/router/src/index.tsx"],
+      "@builtbyted/sw": ["packages/sw/src/index.ts"],
+      "@builtbyted/vite": ["packages/vite/src/index.ts"]
     }
   }
 }

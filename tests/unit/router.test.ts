@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createHomeframeRouter, parsePermalink } from '@homeframe/router';
+import { createHomeframeRouter, parsePermalink } from '@builtbyted/router';
 
 function dispatchTouch(target: Element, type: string, clientX?: number, clientY?: number): Event {
   const event = new Event(type, { bubbles: true, cancelable: true });

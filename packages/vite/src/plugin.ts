@@ -6,7 +6,7 @@ import {
   generateServiceWorker,
   type PrecacheEntry,
   type SerializableRuntimeCacheRule,
-} from '@homeframe/sw';
+} from '@builtbyted/sw';
 import { generateAssets, joinBase, type GeneratedAssetSet } from './assets.js';
 import { createManifest, runtimeCacheOverlapWarnings, validateConfig } from './manifest.js';
 import type {

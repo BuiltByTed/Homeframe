@@ -13,12 +13,12 @@ import {
   getLifecycleController,
   getViewportController,
   type HomeframeViewportSnapshot,
-} from '@homeframe/runtime';
+} from '@builtbyted/runtime';
 import {
   createHttpPushSubscriptionTransport,
   setAppBadge,
   type PushSubscriptionTransport,
-} from '@homeframe/sw';
+} from '@builtbyted/sw';
 import { useHomeframe } from './context.js';
 
 export function useViewport(): HomeframeViewportSnapshot {

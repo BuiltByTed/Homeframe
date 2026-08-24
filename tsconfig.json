@@ -14,5 +14,5 @@
     "vite.config.ts",
     "playwright.config.ts"
   ],
-  "exclude": ["**/dist/**", "node_modules"]
+  "exclude": ["**/dist/**", "packages/scaffold/template/**", "node_modules"]
 }

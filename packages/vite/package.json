@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/vite",
+  "name": "@builtbyted/vite",
   "version": "0.1.0",
+  "description": "Vite adapter for Homeframe metadata, icons, launch assets, manifest, bootstrap, and service worker.",
   "type": "module",
   "sideEffects": false,
   "files": ["dist"],
@@ -20,11 +21,21 @@
     "build": "tsup src/index.ts --format esm --dts --sourcemap --external vite --clean"
   },
   "dependencies": {
-    "@homeframe/runtime": "0.1.0",
-    "@homeframe/sw": "0.1.0",
+    "@builtbyted/runtime": "0.1.0",
+    "@builtbyted/sw": "0.1.0",
     "sharp": "0.35.3"
   },
   "peerDependencies": {
     "vite": ">=7 <9"
-  }
+  },
+  "keywords": ["homeframe", "vite", "pwa", "manifest", "service-worker"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/vite"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

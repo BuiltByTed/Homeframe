@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ViewportController } from '@homeframe/runtime';
+import { ViewportController } from '@builtbyted/runtime';
 
 class MockVisualViewport extends EventTarget {
   width = 390;

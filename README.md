@@ -52,19 +52,37 @@ The hosted GitHub Pages build is static, so its local notification flow works bu
 Production recovery, private-cache logout, and the same-URL worker kill-switch are
 covered in [the recovery runbook](./docs/recovery-and-kill-switch.md).
 
+## Create a new Homeframe app
+
+```bash
+npx scaffold-homeframe-app my-app
+cd my-app
+npm run dev
+```
+
+The scaffold creates a strict TypeScript Vite/React app with the correct
+Homeframe provider, shell, scroller, router, generated PWA assets, atomic update
+policy, and keyboard-safe controls. It also includes an `AGENTS.md` contract and
+`docs/HOMEFRAME_RUNBOOK.md`, so AI coding tools receive the framework ownership
+rules, change workflow, validation commands, device matrix, and release checklist
+alongside the source they are modifying.
+
+Use `--app-name "My App"`, `--package-name my-app`, or `--no-install` when needed.
+The command refuses to overwrite a non-empty directory.
+
 ## Add Homeframe to a Vite React app
 
 Install the framework packages:
 
 ```bash
-npm install @homeframe/runtime @homeframe/react @homeframe/router @homeframe/sw
-npm install -D @homeframe/vite @homeframe/cli
+npm install @builtbyted/runtime @builtbyted/react @builtbyted/router @builtbyted/sw
+npm install -D @builtbyted/vite @builtbyted/cli
 ```
 
 Create `homeframe.config.ts`:
 
 ```ts
-import { defineHomeframe } from '@homeframe/vite';
+import { defineHomeframe } from '@builtbyted/vite';
 
 export default defineHomeframe({
   app: {
@@ -186,7 +204,7 @@ Add the adapter to Vite:
 ```ts
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
-import { homeframe } from '@homeframe/vite';
+import { homeframe } from '@builtbyted/vite';
 import homeframeConfig from './homeframe.config';
 
 export default defineConfig({ plugins: [react(), homeframe(homeframeConfig)] });
@@ -205,7 +223,7 @@ Use an intentionally empty document head and a stable root:
 Import the framework styles once and contain the app in its shell:
 
 ```tsx
-import '@homeframe/react/styles.css';
+import '@builtbyted/react/styles.css';
 import {
   AppHeader,
   AppScrollView,
@@ -213,7 +231,7 @@ import {
   HomeframeInput,
   HomeframeProvider,
   ViewportDock,
-} from '@homeframe/react';
+} from '@builtbyted/react';
 
 export function Root() {
   return (
@@ -271,10 +289,11 @@ All authored JavaScript-runtime source, Node tooling, tests, and configuration a
 
 ## Workspace packages
 
-- `@homeframe/runtime`: viewport, safe area, keyboard, lifecycle, install, and local events.
-- `@homeframe/react`: shell primitives, inputs, readiness/snapshot UI, headless nudges, diagnostics, checkpoints, updates, and badges.
-- `@homeframe/router`: scoped History API routing, real links, direction, loaders, prefetch, navigation-gesture state, deep links, permalinks, and scroll keys.
-- `@homeframe/sw`: generated worker, update client, runtime caching, push transport, and badging.
-- `@homeframe/vite`: validation, document metadata, icons, startup images, manifest, bootstrap, and worker generation.
-- `@homeframe/cli`: `init`, `migrate`, `upgrade`, and `doctor`.
-- `@homeframe/eslint-plugin`: checks for unsafe viewport and input patterns.
+- `@builtbyted/runtime`: viewport, safe area, keyboard, lifecycle, install, and local events.
+- `@builtbyted/react`: shell primitives, inputs, readiness/snapshot UI, headless nudges, diagnostics, checkpoints, updates, and badges.
+- `@builtbyted/router`: scoped History API routing, real links, direction, loaders, prefetch, navigation-gesture state, deep links, permalinks, and scroll keys.
+- `@builtbyted/sw`: generated worker, update client, runtime caching, push transport, and badging.
+- `@builtbyted/vite`: validation, document metadata, icons, startup images, manifest, bootstrap, and worker generation.
+- `@builtbyted/cli`: `init`, `migrate`, `upgrade`, and `doctor`.
+- `@builtbyted/eslint-plugin`: checks for unsafe viewport and input patterns.
+- `scaffold-homeframe-app`: runnable starter generator with AI coding guardrails.

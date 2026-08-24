@@ -2,6 +2,11 @@
 
 This runbook treats an installed PWA's identity and active service worker as production data. Do the migration in stages, retain a rollback deployment, and never change `id`, `scope`, `start_url`, or the worker URL merely to make migration easier.
 
+For a new application, prefer `npx scaffold-homeframe-app my-app`. It creates the
+supported shell/router composition and embeds `AGENTS.md` plus a project-local
+Homeframe runbook for human and AI contributors. The steps below are for an
+existing application whose identity and deployed worker must be preserved.
+
 ## Exit criteria
 
 The migration is complete when:
@@ -41,13 +46,13 @@ Do not unregister the current worker or clear Cache Storage. Those actions stran
 For released packages:
 
 ```bash
-npm install @homeframe/runtime @homeframe/react @homeframe/router @homeframe/sw
-npm install -D @homeframe/vite @homeframe/cli @homeframe/eslint-plugin
+npm install @builtbyted/runtime @builtbyted/react @builtbyted/router @builtbyted/sw
+npm install -D @builtbyted/vite @builtbyted/cli @builtbyted/eslint-plugin
 ```
 
 For a monorepo checkout, use npm workspaces as this repository does. For a private fork, publish immutable package versions to the organization's registry and depend on those versions; do not copy framework source into the application. Lock exact versions during migration and let the lockfile record one coherent Homeframe release.
 
-Add a Renovate/Dependabot group for all `@homeframe/*` packages so they update together. Upgrade the dependency in a normal application branch; do not use a Git upstream merge that can overwrite product code or generated configuration.
+Add a Renovate/Dependabot group for all `@builtbyted/*` packages so they update together. Upgrade the dependency in a normal application branch; do not use a Git upstream merge that can overwrite product code or generated configuration.
 
 Build the packages and app in CI before changing runtime behavior:
 
@@ -79,7 +84,7 @@ Diff `index.html`, `manifest.webmanifest`, `generated/asset-report.json`, and al
 
 ## 4. Move layout ownership to Homeframe
 
-Import `@homeframe/react/styles.css` once, as early as possible. Wrap the React tree in `HomeframeProvider` and the visible application in one `AppViewport`.
+Import `@builtbyted/react/styles.css` once, as early as possible. Wrap the React tree in `HomeframeProvider` and the visible application in one `AppViewport`.
 
 Make `html`, `body`, and `#homeframe-root` non-scrolling. Remove `100vh`/`100dvh` app-shell sizing, global Visual Viewport listeners, body scroll locks, fixed-body keyboard hacks, and duplicated `env(safe-area-inset-*)` padding from migrated shell elements.
 

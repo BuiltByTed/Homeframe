@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getRecentRuntimeEvents, subscribeRuntimeEvents } from '@homeframe/runtime';
+import { getRecentRuntimeEvents, subscribeRuntimeEvents } from '@builtbyted/runtime';
 import { useAppLifecycle, useHomeframeUpdate, useKeyboard, useViewport } from './hooks.js';
 import { useHomeframe } from './context.js';
 

@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { doctorBuild, doctorSource, inventoryProject, isCliEntryPoint, program } from '../../packages/cli/src/index.js';
-import { generateServiceWorker } from '@homeframe/sw';
+import { generateServiceWorker } from '@builtbyted/sw';
 
 const temporaryDirectories: string[] = [];
 

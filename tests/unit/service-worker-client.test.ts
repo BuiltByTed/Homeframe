@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { HomeframeServiceWorkerClient } from '@homeframe/sw';
+import { HomeframeServiceWorkerClient } from '@builtbyted/sw';
 
 class FakeWorker extends EventTarget {
   skipWaitingMessages = 0;

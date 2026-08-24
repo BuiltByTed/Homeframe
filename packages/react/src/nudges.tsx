@@ -13,13 +13,13 @@ import {
   getInstallController,
   type InstallInstructions,
   type InstallState,
-} from '@homeframe/runtime';
+} from '@builtbyted/runtime';
 import {
   createHttpPushSubscriptionTransport,
   decodeApplicationServerKey,
   type HttpPushSubscriptionTransportOptions,
   type PushSubscriptionTransport,
-} from '@homeframe/sw';
+} from '@builtbyted/sw';
 import { useHomeframe } from './context.js';
 
 export interface NudgePolicy {

@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/cli",
+  "name": "@builtbyted/cli",
   "version": "0.1.0",
+  "description": "Build, migrate, upgrade, and diagnose Homeframe applications.",
   "type": "module",
   "files": ["dist"],
   "bin": {
@@ -17,5 +18,15 @@
   "dependencies": {
     "commander": "15.0.0",
     "playwright": "1.62.1"
-  }
+  },
+  "keywords": ["homeframe", "pwa", "cli", "doctor", "migration"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

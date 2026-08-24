@@ -1,6 +1,7 @@
 {
-  "name": "@homeframe/sw",
+  "name": "@builtbyted/sw",
   "version": "0.1.0",
+  "description": "Homeframe service-worker generation, atomic updates, offline caching, push, and badging.",
   "type": "module",
   "sideEffects": false,
   "files": ["dist"],
@@ -15,5 +16,15 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
-  }
+  },
+  "keywords": ["homeframe", "pwa", "service-worker", "offline", "push"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuiltByTed/Homeframe.git",
+    "directory": "packages/sw"
+  },
+  "homepage": "https://github.com/BuiltByTed/Homeframe#readme",
+  "bugs": { "url": "https://github.com/BuiltByTed/Homeframe/issues" },
+  "publishConfig": { "access": "public" }
 }

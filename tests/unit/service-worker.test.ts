@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { generateServiceWorker } from '@homeframe/sw';
+import { generateServiceWorker } from '@builtbyted/sw';
 
 describe('service-worker generator', () => {
   const worker = generateServiceWorker({
