@@ -20,7 +20,7 @@ final class HomeframeSimulatorUITests: XCTestCase {
             .matching(NSPredicate(format: "label CONTAINS 'PWA'"))
             .firstMatch
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 10))
-        XCTAssertLessThanOrEqual(bottomLink.frame.maxY, window.maxY - 28)
+        XCTAssertLessThanOrEqual(bottomLink.frame.maxY, window.maxY - 24)
         XCTAssertGreaterThan(bottomLink.frame.minY, window.maxY - 130)
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())

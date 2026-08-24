@@ -61,7 +61,7 @@
 
 @layer homeframe.structure {
   [data-hf-viewport] {
-    position: absolute;
+    position: fixed;
     z-index: 0;
     top: var(--hf-layout-viewport-top);
     left: 0;
@@ -79,6 +79,7 @@
   }
 
   [data-hf-shell] {
+    position: relative;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
     width: 100%;
@@ -86,6 +87,23 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+  }
+
+  /*
+   * Keep route pixels out of the keyboard-owned rectangle. The shell remains
+   * physically stable; this opaque layer grows from the visual bottom while
+   * the avoid dock stays above it.
+   */
+  [data-hf-shell]::after {
+    position: absolute;
+    z-index: 10;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: var(--hf-keyboard-height);
+    pointer-events: none;
+    background: var(--hf-dock-background);
+    content: '';
   }
 
   [data-hf-header] {

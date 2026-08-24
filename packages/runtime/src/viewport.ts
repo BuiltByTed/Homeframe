@@ -64,7 +64,8 @@ interface EditableScrollDrag {
   startX: number;
   startY: number;
   startScrollTop: number;
-  scroller: HTMLElement;
+  scroller: HTMLElement | null;
+  editable: HTMLElement;
   dragging: boolean;
 }
 
@@ -89,6 +90,12 @@ const editableSelector =
 
 export function isEditableElement(value: EventTarget | null): value is HTMLElement {
   return value instanceof HTMLElement && value.matches(editableSelector);
+}
+
+function needsKeyboardFocusGuard(value: EventTarget | null): value is HTMLElement {
+  if (!isEditableElement(value) || value instanceof HTMLSelectElement) return false;
+  return !(value instanceof HTMLInputElement)
+    || !['date', 'datetime-local', 'month', 'time', 'week', 'color', 'file', 'range'].includes(value.type);
 }
 
 export function detectDisplayMode(): DisplayMode {
@@ -190,27 +197,43 @@ export class ViewportController {
     const virtualKeyboard = (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard;
     virtualKeyboard?.addEventListener('geometrychange', schedule, { signal });
 
-    // Inputs placed in a bottom dock are intentionally outside the route's
-    // scroll view. WebKit consequently consumes a drag that begins on the
-    // input without scrolling anything. Transfer a vertical touch gesture to
-    // the shell's content scroller, while preserving ordinary taps and native
-    // scrolling for editables that already live inside a scroll view.
+    // WebKit starts its implicit input-focus work before `click`, which is too
+    // late to prevent the standalone layout viewport from panning. Claim the
+    // initial touch now; touchend below focuses only completed taps, so a drag
+    // beginning on a field still scrolls instead of opening the keyboard.
+    document.addEventListener('pointerdown', (event) => {
+      if (!needsKeyboardFocusGuard(event.target)
+        || document.activeElement === event.target
+        || (event.pointerType !== 'touch' && event.pointerType !== 'pen')) return;
+      this.captureKeyboardAnchor(event.target);
+      this.beginKeyboardSettlement();
+      event.preventDefault();
+    }, { signal, capture: true, passive: false });
+
+    // Once an inactive editable's native touch action is claimed, explicitly
+    // transfer vertical movement to the application scroller. This applies to
+    // route fields and dock fields alike and preserves the tap-versus-scroll
+    // distinction while suppressing WebKit's automatic focus pan.
     document.addEventListener('touchstart', (event) => {
-      if (!isEditableElement(event.target) || event.touches.length !== 1) return;
-      if (event.target.closest('[data-hf-scroll-view]')) return;
-      const shell = event.target.closest<HTMLElement>('[data-hf-shell]');
-      const scroller = shell?.querySelector<HTMLElement>('[data-hf-scroll-view]');
+      if (!needsKeyboardFocusGuard(event.target)
+        || document.activeElement === event.target
+        || event.touches.length !== 1) return;
+      const scroller = this.primaryScroller(event.target);
       const touch = event.touches[0];
-      if (!scroller || !touch || scroller.scrollHeight <= scroller.clientHeight) return;
+      if (!touch) return;
+      event.preventDefault();
+      this.captureKeyboardAnchor(event.target);
+      this.beginKeyboardSettlement();
       this.editableScrollDrag = {
         identifier: touch.identifier,
         startX: touch.clientX,
         startY: touch.clientY,
-        startScrollTop: scroller.scrollTop,
+        startScrollTop: scroller?.scrollTop ?? 0,
         scroller,
+        editable: event.target,
         dragging: false,
       };
-    }, { signal, capture: true, passive: true });
+    }, { signal, capture: true, passive: false });
 
     document.addEventListener('touchmove', (event) => {
       const drag = this.editableScrollDrag;
@@ -226,14 +249,38 @@ export class ViewportController {
         }
         if (Math.abs(deltaY) <= 8) return;
         drag.dragging = true;
+        this.userOwnsKeyboardScroll = true;
+        this.keyboardSettling = false;
+        this.stopKeyboardCorrection();
       }
       event.preventDefault();
-      drag.scroller.scrollTop = drag.startScrollTop - deltaY;
-      drag.scroller.dispatchEvent(new Event('scroll'));
+      if (drag.scroller) {
+        drag.scroller.scrollTop = drag.startScrollTop - deltaY;
+        drag.scroller.dispatchEvent(new Event('scroll'));
+      }
     }, { signal, capture: true, passive: false });
 
-    const finishEditableScrollDrag = () => {
+    const finishEditableScrollDrag = (event: TouchEvent) => {
+      const drag = this.editableScrollDrag;
       this.editableScrollDrag = null;
+      if (!drag || drag.dragging || event.type === 'touchcancel'
+        || !drag.editable.isConnected) return;
+      this.captureKeyboardAnchor(drag.editable);
+      this.beginKeyboardSettlement();
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
+      drag.editable.focus({ preventScroll: true });
+      if (drag.editable instanceof HTMLInputElement
+        && ['text', 'search', 'tel', 'url', 'password'].includes(drag.editable.type)) {
+        const end = drag.editable.value.length;
+        drag.editable.setSelectionRange(end, end);
+      } else if (drag.editable instanceof HTMLTextAreaElement) {
+        const end = drag.editable.value.length;
+        drag.editable.setSelectionRange(end, end);
+      }
+      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+        window.scrollTo(scrollX, scrollY);
+      }
     };
     document.addEventListener('touchend', finishEditableScrollDrag, { signal, capture: true });
     document.addEventListener('touchcancel', finishEditableScrollDrag, { signal, capture: true });
@@ -271,7 +318,13 @@ export class ViewportController {
       });
     }, { signal });
 
-    const takeKeyboardScrollControl = () => {
+    const takeKeyboardScrollControl = (event: Event) => {
+      // The opening touch is still owned by the focus guard above. A real drag
+      // transfers ownership in touchmove; releasing a tap focuses manually.
+      if ((event.type === 'pointerdown' || event.type === 'touchstart')
+        && needsKeyboardFocusGuard(event.target)
+        && document.activeElement !== event.target
+        && this.snapshot.keyboard.phase === 'closed') return;
       if (!this.keyboardSettling && this.snapshot.keyboard.phase === 'closed') return;
       this.userOwnsKeyboardScroll = true;
       this.keyboardSettling = false;

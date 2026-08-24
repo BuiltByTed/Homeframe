@@ -42,7 +42,7 @@ test('paints a contained shell with safe header, scroll root, and bottom dock', 
   expect(layout.windowScrollY).toBe(0);
   expect(Math.abs(layout.headerTop - layout.viewportTop)).toBeLessThanOrEqual(1);
   expect(Math.abs(layout.dockBottom - layout.viewportBottom)).toBeLessThanOrEqual(1);
-  expect(layout.viewportPosition).toBe('absolute');
+  expect(layout.viewportPosition).toBe('fixed');
   expect(layout.rootBackground).not.toBe('rgba(0, 0, 0, 0)');
   expect(layout.bodyPosition).not.toBe('fixed');
   if (await page.evaluate(() => innerWidth < 800)) {

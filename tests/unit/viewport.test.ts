@@ -291,7 +291,13 @@ describe('ViewportController', () => {
     input.style.fontSize = '16px';
     const focus = vi.spyOn(input, 'focus');
     document.body.append(input);
-    input.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    const pointerDown = new PointerEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      pointerType: 'touch',
+    });
+    input.dispatchEvent(pointerDown);
+    expect(pointerDown.defaultPrevented).toBe(true);
     expect(focus).not.toHaveBeenCalled();
     input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
