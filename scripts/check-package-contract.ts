@@ -15,7 +15,7 @@ const manifest = JSON.parse(await readFile(resolve(homeframeRoot, 'package.json'
 };
 assert(manifest.name === '@builtbyted/homeframe', 'Unified package name must be @builtbyted/homeframe.');
 assert(manifest.private !== true, '@builtbyted/homeframe must be publishable.');
-assert(manifest.bin?.homeframe === './dist/cli/index.js', 'Unified package must expose the homeframe CLI.');
+assert(manifest.bin?.homeframe === 'dist/cli/index.js', 'Unified package must expose the homeframe CLI.');
 for (const exportName of requiredExports) {
   assert(exportName in (manifest.exports ?? {}), `Missing package export ${exportName}.`);
 }
