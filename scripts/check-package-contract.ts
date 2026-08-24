@@ -65,6 +65,12 @@ assert(scaffoldManifest.dependencies?.['@builtbyted/homeframe'] === '0.1.0', 'Sc
 assert(Object.keys(scaffoldManifest.dependencies ?? {}).filter((name) => name.startsWith('@builtbyted/')).length === 1,
   'Scaffold must depend on one public BuiltByTed package.');
 
+const scaffoldPackage = JSON.parse(await readFile(resolve(root, 'packages/scaffold/package.json'), 'utf8')) as {
+  bin?: Record<string, string>;
+};
+assert(scaffoldPackage.bin?.['scaffold-homeframe-app'] === 'dist/index.js',
+  'Scaffold package must expose the scaffold-homeframe-app executable.');
+
 for (const specifier of [
   '@builtbyted/homeframe',
   '@builtbyted/homeframe/react',
