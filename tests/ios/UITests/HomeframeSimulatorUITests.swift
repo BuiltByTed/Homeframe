@@ -289,6 +289,59 @@ final class HomeframeSimulatorUITests: XCTestCase {
     }
 
     @MainActor
+    func testSafariDeepPermalinkSurvivesAnAvailableBundleUpdate() throws {
+        let root = ProcessInfo.processInfo.environment["HOMEFRAME_TEST_URL"]
+            ?? "http://127.0.0.1:4180/"
+        guard let baseURL = URL(string: root) else {
+            XCTFail("HOMEFRAME_TEST_URL must be a valid URL.")
+            return
+        }
+        var components = URLComponents(
+            url: baseURL.appendingPathComponent("permalinks/release-board"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "mode", value: "compact"),
+            URLQueryItem(name: "filter", value: "keyboard"),
+            URLQueryItem(name: "__hf_offset", value: "12"),
+        ]
+        components?.fragment = "permalink-item-7"
+        guard let permalink = components?.url?.absoluteString else {
+            XCTFail("Could not construct the permalink test URL.")
+            return
+        }
+
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        safari.launch()
+        let address = safari.textFields["Address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        address.tap()
+        address.typeText(permalink)
+        let go = safari.keyboards.buttons["go"]
+        XCTAssertTrue(go.waitForExistence(timeout: 5))
+        go.tap()
+
+        let destination = safari.staticTexts["Cold-launch view: release-board"]
+        if !destination.waitForExistence(timeout: 5) {
+            // A previously controlled tab may still run the prior atomic
+            // bundle, whose route table cannot know a newly deployed route.
+            // Activate the offered bundle without changing the deep URL.
+            let update = safari.buttons["Update"]
+            XCTAssertTrue(update.waitForExistence(timeout: 10))
+            update.tap()
+        }
+        XCTAssertTrue(destination.waitForExistence(timeout: 20))
+        XCTAssertEqual(safari.otherElements["Permalink layout"].value as? String, "Compact")
+        XCTAssertEqual(safari.otherElements["Permalink filter"].value as? String, "Keyboard findings")
+        XCTAssertTrue(safari.staticTexts["Keyboard finding 7"].waitForExistence(timeout: 10))
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "Homeframe Safari Deep Permalink"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    @MainActor
     private func launchHomeframe() throws -> XCUIApplication {
         XCUIApplication(bundleIdentifier: "com.apple.webapp").terminate()
         XCUIDevice.shared.press(.home)
