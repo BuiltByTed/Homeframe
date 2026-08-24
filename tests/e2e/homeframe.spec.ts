@@ -83,10 +83,20 @@ test('route-scoped scroll views restore through real history without reloading t
   const before = await scroller.evaluate((element) => element.scrollTop);
   await page.getByRole('link', { name: /Restoration item 12/ }).evaluate((element: HTMLElement) => element.click());
   await expect(page.getByRole('heading', { name: /History destination 12/ })).toBeVisible();
+  await page.evaluate(() => {
+    const observer = new MutationObserver(() => {
+      const list = document.querySelector<HTMLElement>('.history-list');
+      if (!list) return;
+      observer.disconnect();
+      list.hidden = true;
+      window.setTimeout(() => { list.hidden = false; }, 250);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  });
   await page.goBack();
   await expect(page.getByRole('heading', { name: /Scroll, navigate/ })).toBeVisible();
   expect(await page.evaluate(() => (window as Window & { __documentToken?: string }).__documentToken)).toBe(token);
-  expect(await scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(before, -1);
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(before, -1);
 });
 
 test('button navigation starts the destination at the top while history restores it', async ({ page }) => {

@@ -182,7 +182,38 @@ export const AppScrollView = forwardRef<AppScrollViewHandle, AppScrollViewProps>
         || navigationType === 'forward'
         || navigationType === 'reload' ? 'restore' : 'reset');
       if (action === 'preserve') return;
-      ref.current.scrollTop = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
+      const node = ref.current;
+      const target = action === 'restore' ? scrollPositions.get(scrollKey) ?? 0 : 0;
+      node.scrollTop = target;
+      if (action !== 'restore' || target <= 0 || Math.abs(node.scrollTop - target) < 1) return;
+
+      // Route data frequently arrives after the destination scroller mounts.
+      // A one-shot assignment is clamped against the short loading state and
+      // permanently loses the saved position. Retry until the content can hold
+      // the target, while yielding immediately to any real user interaction.
+      let frame = 0;
+      let cancelled = false;
+      const deadline = performance.now() + 10_000;
+      const cancel = () => {
+        cancelled = true;
+        if (frame) cancelAnimationFrame(frame);
+      };
+      const retry = () => {
+        if (cancelled || ref.current !== node || performance.now() >= deadline) return;
+        node.scrollTop = target;
+        if (Math.abs(node.scrollTop - target) < 1) return;
+        frame = requestAnimationFrame(retry);
+      };
+      for (const eventName of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
+        node.addEventListener(eventName, cancel, { capture: true, once: true });
+      }
+      frame = requestAnimationFrame(retry);
+      return () => {
+        cancel();
+        for (const eventName of ['pointerdown', 'touchstart', 'wheel', 'keydown']) {
+          node.removeEventListener(eventName, cancel, { capture: true });
+        }
+      };
     }, [navigationType, scrollBehavior, scrollKey]);
 
     // Keep the mounted node in the cleanup closure. React detaches object refs
