@@ -112,6 +112,27 @@ describe('HomeframeServiceWorkerClient multi-client coordination', () => {
     expect(worker.skipWaitingMessages).toBe(1);
     client.stop();
   });
+
+  it('rechecks local guards immediately before safe-point activation', async () => {
+    const worker = new FakeWorker();
+    const registration = new FakeRegistration(worker);
+    const container = new FakeServiceWorkerContainer(worker, registration);
+    Object.defineProperty(navigator, 'serviceWorker', { value: container, configurable: true });
+    const client = new HomeframeServiceWorkerClient({ checkOnLaunch: false, scope: '/settled-guard/' });
+    let safe = true;
+    client.registerGuard(() => safe);
+    window.setTimeout(() => { safe = false; }, 40);
+    await client.start();
+    await delay(220);
+    expect(worker.skipWaitingMessages).toBe(0);
+    expect(client.getSnapshot().state).toBe('deferred');
+
+    safe = true;
+    window.dispatchEvent(new Event('homeframe:update-safe-point'));
+    await delay(320);
+    expect(worker.skipWaitingMessages).toBe(1);
+    client.stop();
+  });
 });
 
 function delay(milliseconds: number): Promise<void> {

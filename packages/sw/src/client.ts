@@ -239,7 +239,9 @@ export class HomeframeServiceWorkerClient {
       return;
     }
     await new Promise<void>((resolve) => window.setTimeout(resolve, 90));
-    if (this.hasUnsafePeer(this.snapshot.availableBuild)) {
+    const stillSafe = await this.isSafePoint();
+    this.broadcastCoordination('safe-state', this.snapshot.availableBuild, stillSafe);
+    if (!stillSafe || this.hasUnsafePeer(this.snapshot.availableBuild)) {
       this.publish({ state: 'deferred' });
       return;
     }
