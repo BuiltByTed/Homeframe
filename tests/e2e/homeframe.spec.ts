@@ -177,6 +177,32 @@ test('route-scoped scroll views restore through real history without reloading t
   await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeCloseTo(before, -1);
 });
 
+test('route navigation preserves one opaque, unfiltered header and primary scroller', async ({ page }) => {
+  const identity = crypto.randomUUID();
+  await page.locator('[data-hf-header]').evaluate((element, token) => {
+    element.setAttribute('data-test-persistent-header', token);
+  }, identity);
+  await page.locator('[data-hf-scroll-view]').evaluate((element, token) => {
+    element.setAttribute('data-test-persistent-scroller', token);
+  }, identity);
+
+  await navigateFromShell(page, /Keyboard/);
+
+  await expect(page.locator(`[data-hf-header][data-test-persistent-header="${identity}"]`)).toHaveCount(1);
+  await expect(page.locator(`[data-hf-scroll-view][data-test-persistent-scroller="${identity}"]`)).toHaveCount(1);
+  const surface = await page.locator('[data-hf-header]').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      backgroundColor: style.backgroundColor,
+      backdropFilter: style.backdropFilter,
+      webkitBackdropFilter: style.getPropertyValue('-webkit-backdrop-filter'),
+    };
+  });
+  expect(surface.backgroundColor).not.toMatch(/^(?:transparent|rgba\(0, 0, 0, 0\))$/);
+  expect(surface.backdropFilter).toBe('none');
+  expect(surface.webkitBackdropFilter || 'none').toBe('none');
+});
+
 test('button navigation starts the destination at the top while history restores it', async ({ page }) => {
   const scroller = page.locator('[data-hf-scroll-view]');
   await scroller.evaluate((element) => { element.scrollTop = 700; });

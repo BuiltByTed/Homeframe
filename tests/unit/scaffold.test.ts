@@ -41,9 +41,18 @@ describe('scaffold-homeframe-app', () => {
       dependencies: Record<string, string>;
     };
     expect(packageJson.name).toBe('@builtbyted/my-app');
-    expect(packageJson.dependencies['@builtbyted/homeframe']).toBe('0.1.0');
+    expect(packageJson.dependencies['@builtbyted/homeframe']).toBe('0.1.1');
     expect(await readFile(join(target, 'index.html'), 'utf8')).toContain('<title>Ted &amp; Co</title>');
     expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).toContain('name: "Ted & Co"');
+    const agentContract = await readFile(join(target, 'AGENTS.md'), 'utf8');
+    const runbook = await readFile(join(target, 'docs/HOMEFRAME_RUNBOOK.md'), 'utf8');
+    expect(agentContract).toContain('Mount `AppShell` and `AppScrollView` above `RouterOutlet`');
+    expect(agentContract).toContain('scroll a long route/thread while the keyboard is open');
+    expect(runbook).toContain('A route-local `PageFrame` that mounts');
+    expect(runbook).toContain('its own `AppShell` is not a harmless abstraction');
+    expect(runbook).toContain('Record separate native iPhone Simulator videos');
+    expect(runbook).toContain("`splash.title: ''` intentionally");
+    expect(runbook).toContain('generates no title element');
 
     for (const file of result.files) {
       expect(await readFile(join(target, file), 'utf8')).not.toMatch(/__HOMEFRAME_[A-Z_]+__/);

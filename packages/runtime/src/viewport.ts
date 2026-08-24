@@ -187,7 +187,13 @@ export class ViewportController {
     const schedule = () => this.scheduleMeasure();
     const scheduleKeyboardViewportChange = () => {
       this.scheduleMeasure();
-      if (this.focusedEditable || this.snapshot.keyboard.phase !== 'closed') {
+      // VisualViewport emits scroll/resize events during an ordinary finger
+      // drag while the keyboard is open. Once that gesture has transferred
+      // the route scroller to the user, restarting focus settlement here
+      // would revoke ownership and restore the old keyboard anchor on the
+      // next animation frame, visibly fighting the native scroll.
+      if (!this.userOwnsKeyboardScroll
+        && (this.focusedEditable || this.snapshot.keyboard.phase !== 'closed')) {
         this.beginKeyboardSettlement();
       }
     };

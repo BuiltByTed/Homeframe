@@ -5,10 +5,18 @@ that runbook and `homeframe.config.ts` as required project context.
 
 ## Non-negotiable boundaries
 
-- Keep exactly one `HomeframeProvider`, one `HomeframeRouterProvider`, and one
-  top-level `AppViewport`.
-- Compose persistent chrome through `AppShell`. Put the primary scrolling region
-  in `AppScrollView`; the document itself must never scroll.
+- Keep exactly one `HomeframeProvider`, one `HomeframeRouterProvider`, one
+  top-level `AppViewport`, one `AppShell`, and one primary `AppScrollView`.
+- Mount `AppShell` and `AppScrollView` above `RouterOutlet`. Route components
+  render page content only. Never put `AppShell`, `AppViewport`, or a page-frame
+  wrapper that creates either one inside a route element; the shell, header, and
+  primary scroller DOM nodes must retain identity across navigation.
+- Compose persistent chrome through `AppShell`. The document itself must never
+  scroll.
+- Keep the framework-owned header wrapper and top safe-area backing opaque using
+  the app colors generated from `homeframe.config.ts`. Do not apply transparency,
+  `backdrop-filter`, or `-webkit-backdrop-filter` to `[data-hf-header]`; style an
+  inner app header instead.
 - Put fixed bottom navigation or composers in the `AppShell` `bottom` slot or a
   `ViewportDock`/`KeyboardDock`. Do not position app-owned controls against the
   browser viewport.
@@ -45,7 +53,13 @@ that runbook and `homeframe.config.ts` as required project context.
 - `npm run typecheck`, `npm run build`, and `npm run doctor` pass.
 - `window.scrollY` remains zero on every route.
 - The header does not move when the keyboard opens.
+- The same header and primary scroller nodes survive route navigation, the top
+  safe-area surface is opaque, and computed backdrop filters are `none`.
 - The bottom dock follows keyboard geometry without exposing content behind it.
+- A user can scroll a long route/thread while the keyboard is open without the
+  framework restoring an old scroll position or oscillating the shell.
+- The native startup image and HTML splash keep the logo at the same full-screen
+  center with no intermediate jump.
 - Back/Forward, deep links, reload, offline launch, and update activation preserve
   the expected route and state.
 - No duplicate framework ownership was introduced.

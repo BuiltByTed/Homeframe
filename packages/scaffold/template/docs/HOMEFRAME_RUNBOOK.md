@@ -46,6 +46,28 @@ Use one instance of each root provider and viewport. A route renders inside the
 existing `RouterOutlet`; it does not mount another viewport, manipulate the
 document, or create an independent global scroller.
 
+There must also be exactly one `AppShell` and one primary `AppScrollView`, both
+mounted above `RouterOutlet`. Their DOM identity—and the header DOM identity—must
+survive every same-document route change. A route-local `PageFrame` that mounts
+its own `AppShell` is not a harmless abstraction: it tears down the safe-area
+backing and scroll owner between routes, allowing iOS to expose its transient
+blur/snapshot layer.
+
+Do not do this:
+
+```tsx
+const routes = [
+  { path: '/inbox', element: <PageFrame><Inbox /></PageFrame> },
+];
+
+function PageFrame({ children }: { children: React.ReactNode }) {
+  return <AppShell><AppScrollView>{children}</AppScrollView></AppShell>;
+}
+```
+
+Keep `PageFrame` route-local only when it renders ordinary semantic page content
+and never creates a provider, viewport, shell, header, dock, or primary scroller.
+
 `AppScrollView` is the page scroller. Pass it `scrollKey`, `navigationType`,
 `scrollBehavior`, and `permalinkScroll` from `useRouteScrollRestoration()`.
 Scrollable widgets inside a page must be deliberately bounded and must not turn
@@ -81,6 +103,15 @@ Use ordinary semantic React components inside a route. Follow these constraints:
 - Maintain keyboard navigation, visible focus, accessible names, contrast,
   reduced-motion behavior, and 200% desktop zoom usability.
 
+The `AppShell` header slot owns the entire top safe-area surface. Leave its
+safe-area behavior enabled and keep the framework-owned `[data-hf-header]`
+wrapper opaque with the app background generated from `homeframe.config.ts`.
+Do not put `backdrop-filter`, `-webkit-backdrop-filter`, opacity, or a transparent
+background on that wrapper. Product styling belongs on the inner header component.
+If the framework wrapper computes to a translucent surface, iOS can show its
+system blur above the app bar; that is a shell contract violation, not a reason to
+add another fixed header.
+
 ## 5. Change branding or installation metadata
 
 Edit only `homeframe.config.ts` and assets under `brand/`. Homeframe generates the
@@ -96,6 +127,12 @@ identity or abandon the existing worker.
 Do not hand-author generated tags in `index.html`; keep only ordinary document
 content such as charset and title there.
 
+Do not style or replace `#homeframe-boot-splash`. `splash.title: ''` intentionally
+generates no title element, and Homeframe keeps the logo centered against the same
+full-screen canvas used by the generated Apple startup image. An app-level
+`:empty` rule, safe-area offset, viewport measurement, or splash animation is a
+workaround that reintroduces launch movement.
+
 ## 6. Add a bottom composer or navigation
 
 Pass persistent bottom UI to `AppShell`'s `bottom` slot. Homeframe wraps it in a
@@ -107,6 +144,14 @@ closing → closed, rotation while focused, hardware keyboard, dictation, emoji,
 and a third-party keyboard. The header must stay fixed, the active control must
 remain reachable, and no product content may show through the keyboard-owned
 rectangle.
+
+Also scroll a long message thread or form while the software keyboard stays open.
+The primary scroller must remain under the finger and continue naturally after
+release; Homeframe must not restore a pre-focus anchor, reverse the gesture, or
+oscillate the shell. Record separate native iPhone Simulator videos for keyboard
+opening and closing, step every encoded movement frame, and compare the dock edge
+to the keyboard edge. Browser emulation is useful for deterministic logic tests
+but is not iOS keyboard-animation evidence.
 
 ## 7. Add lifecycle or update-sensitive state
 
@@ -176,6 +221,14 @@ artifact in:
 During keyboard tests record `window.scrollY`, header position, dock position, and
 focused-control bounds before focus, while open, while changing fields, and after
 close. `window.scrollY` must always be zero.
+
+Record a cold Home Screen launch and inspect it frame by frame. The generated
+native startup logo and HTML splash logo must use the same full-screen center; no
+intermediate frame may move the logo toward or away from a safe area. Across route
+navigation, verify that the header node remains the same node, its safe-area
+backing is opaque, and both computed backdrop-filter properties are `none`. While
+the keyboard is open, drag the longest thread/form in both directions and reject
+any frame that reverses or oscillates after the finger movement.
 
 ## 11. Release and rollback
 

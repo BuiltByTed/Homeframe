@@ -512,6 +512,51 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('does not reclaim an open-keyboard scroller after the user starts dragging', async () => {
+    const viewport = installViewport();
+    const controller = new ViewportController({
+      settleDelaysMs: [],
+      keyboardStabilizationMs: 50,
+    });
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    const pageContent = document.createElement('div');
+    scroller.append(pageContent);
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    dock.append(input);
+    shell.append(scroller, dock);
+    document.body.append(shell);
+    controller.start();
+
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().keyboard.phase).toBe('open');
+    });
+
+    pageContent.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      pointerType: 'touch',
+    }));
+    scroller.scrollTop = 240;
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    // iOS emits these while the same native drag is still in progress. They
+    // must update geometry without restarting anchor correction.
+    viewport.dispatchEvent(new Event('scroll'));
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(scroller.scrollTop).toBe(240);
+    expect(document.documentElement.dataset.hfKeyboard).toBe('open');
+    controller.stop();
+  });
+
   it('raises the editable-text minimum when the initial viewport is scaled down', async () => {
     const viewport = installViewport();
     viewport.scale = 0.75;

@@ -6,6 +6,7 @@ import type { OutgoingHttpHeaders } from 'node:http';
 
 const root = resolve('examples/kitchen-sink/dist');
 const port = Number(process.env.PORT ?? 4173);
+const assetDelayMs = Math.max(0, Number(process.env.HOMEFRAME_TEST_ASSET_DELAY_MS ?? 0) || 0);
 const types: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -67,8 +68,11 @@ const server = createServer(async (request, response) => {
     file = resolve(root, 'index.html');
   }
   try {
-    let body = await readFile(file);
     const extension = extname(file);
+    if (assetDelayMs > 0 && extension === '.js') {
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, assetDelayMs));
+    }
+    let body = await readFile(file);
     const isWorker = url.pathname === '/sw.js';
     const isHtml = extension === '.html';
     const immutable = /\/assets\/.*-[A-Za-z0-9_-]+\.(js|css)$/.test(url.pathname);

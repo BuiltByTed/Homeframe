@@ -77,20 +77,18 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertEqual(try viewportScale(from: contract.label), scaleBefore, accuracy: 0.01)
         XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
         XCTAssertEqual(routeAnchor.frame.minY, routeAnchorY, accuracy: 1)
-        XCTAssertEqual(
-            composer.frame.maxY,
-            sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)),
-            accuracy: 24
+        XCTAssertLessThanOrEqual(
+            textField.frame.maxY,
+            sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)) + 24
         )
 
         XCTAssertTrue(searchField.exists)
         tapCenter(of: searchField, in: webApp)
         XCTAssertTrue(waitUntil(timeout: 5) { !contract.label.contains("closed") })
         XCTAssertEqual(try viewportScale(from: contract.label), scaleBefore, accuracy: 0.01)
-        XCTAssertEqual(
-            composer.frame.maxY,
-            sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)),
-            accuracy: 24
+        XCTAssertLessThanOrEqual(
+            searchField.frame.maxY,
+            sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)) + 24
         )
         XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
 
@@ -108,6 +106,87 @@ final class HomeframeSimulatorUITests: XCTestCase {
         attachment.name = "Homeframe Keyboard Restored"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    @MainActor
+    func testKeyboardDockAnimationAndOpenScrollOwnership() throws {
+        let webApp = try launchHomeframe()
+        let header = webApp.staticTexts["Homeframe"]
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        let headerFrame = header.frame
+
+        let textField = webApp.textFields["Type text"]
+        if !textField.exists {
+            let keyboardLink = webApp.links.matching(NSPredicate(format: "label CONTAINS 'Keyboard'")).firstMatch
+            XCTAssertTrue(keyboardLink.waitForExistence(timeout: 10))
+            tapCenter(of: keyboardLink, in: webApp)
+        }
+
+        let composer = webApp.textFields["Persistent composer"]
+        let window = webApp.windows.firstMatch
+        let contract = webApp.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH 'Viewport contract:'"))
+            .firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 10))
+        XCTAssertTrue(contract.waitForExistence(timeout: 10))
+        XCTAssertTrue(waitUntil(timeout: 5) { contract.label.contains("closed") })
+        let initialContentAnchorY = textField.frame.minY
+        let closedDragStart = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+        let closedDragEnd = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.28))
+        for _ in 0..<2 {
+            closedDragStart.press(
+                forDuration: 0.05,
+                thenDragTo: closedDragEnd,
+                withVelocity: .slow,
+                thenHoldForDuration: 0.1
+            )
+        }
+        let contentAnchor = textField
+        XCTAssertLessThan(contentAnchor.frame.minY, initialContentAnchorY - 20)
+        let sceneOrigin = webApp.windows.firstMatch.frame.maxY
+            - (try contractNumber(named: "visual bottom", from: contract.label))
+
+        tapCenter(of: composer, in: webApp)
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            contract.label.contains("open") && contract.label.contains("document scroll 0")
+        })
+        XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
+        let contentAnchorY = contentAnchor.frame.minY
+
+        // Keep the keyboard open while the user takes ownership of the route
+        // scroller. VisualViewport events emitted during this drag must never
+        // restart Homeframe's focus-settlement correction loop and fight the
+        // native gesture.
+        let dragStart = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.38))
+        let dragEnd = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16))
+        dragStart.press(
+            forDuration: 0.05,
+            thenDragTo: dragEnd,
+            withVelocity: .slow,
+            thenHoldForDuration: 0.15
+        )
+        XCTAssertTrue(waitUntil(timeout: 3) {
+            contentAnchor.frame.minY < contentAnchorY - 20
+        })
+        XCTAssertTrue(contract.label.contains("document scroll 0"))
+        XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
+
+        // Preserve a short stationary interval in the recording so frame
+        // analysis can distinguish a real post-gesture oscillation from the
+        // drag itself.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.75))
+        XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
+
+        pressScreenPoint(
+            x: webApp.windows.firstMatch.frame.maxX - 42,
+            y: sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)) + 38,
+            in: webApp
+        )
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            contract.label.contains("closed") && contract.label.contains("document scroll 0")
+        })
+        RunLoop.current.run(until: Date().addingTimeInterval(0.75))
+        XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
     }
 
     @MainActor

@@ -19,6 +19,11 @@ The scaffold includes strict TypeScript, a working shell/router composition,
 generated PWA assets, `AGENTS.md`, and `docs/HOMEFRAME_RUNBOOK.md` so human and AI
 coders know the framework's ownership boundaries.
 
+The generated contract keeps one persistent shell and scroller above the route
+outlet, preserves an opaque iOS safe-area header surface, forbids app-level
+viewport/splash workarounds, and requires native iPhone keyboard open/close plus
+open-keyboard scrolling checks before release.
+
 ## Install manually
 
 ```bash
