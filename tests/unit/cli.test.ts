@@ -158,6 +158,29 @@ describe('Homeframe adoption inventory and init', () => {
 });
 
 describe('Homeframe source doctor', () => {
+  it('does not require a push backend when notification nudges are explicitly disabled', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', `export default {
+      nudges: { notifications: { enabled: false } },
+      serviceWorker: { notifications: false },
+    };`);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_PUSH_BACKEND_MISSING')).toEqual([]);
+  });
+
+  it('still requires a transport for an enabled notification policy', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', `export default {
+      nudges: { notifications: { enabled: true } },
+    };`);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'HF_PUSH_BACKEND_MISSING' }),
+    ]));
+  });
+
   it('checks editable controls without treating captions or test fixtures as runtime defects', async () => {
     const root = await fixtureDirectory();
     await writeFixture(root, 'homeframe.config.ts', 'export default {};');

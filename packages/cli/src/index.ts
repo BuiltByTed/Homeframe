@@ -239,8 +239,9 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
           relativeFile,
         ));
       }
-      if (/notifications\s*:\s*\{/.test(text)
-      ) notificationConfigFile = relativeFile;
+      const enabledNotificationPolicy = [...text.matchAll(/notifications\s*:\s*\{([\s\S]*?)\}/g)]
+        .some((match) => !/\benabled\s*:\s*false\b/.test(match[1] ?? ''));
+      if (enabledNotificationPolicy) notificationConfigFile = relativeFile;
     }
   }
   if (notificationConfigFile && !subscriptionTransportFound) diagnostics.push(warning(
