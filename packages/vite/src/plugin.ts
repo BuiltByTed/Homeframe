@@ -1,0 +1,292 @@
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import type { IndexHtmlTransformContext, Plugin, ResolvedConfig } from 'vite';
+import { generateServiceWorker, type PrecacheEntry } from '@homeframe/sw';
+import { generateAssets, joinBase, type GeneratedAssetSet } from './assets.js';
+import { createManifest, validateConfig } from './manifest.js';
+import type {
+  GeneratedHomeframeAsset,
+  HomeframeConfig,
+  HomeframeServiceWorkerBuildConfig,
+} from './types.js';
+
+const virtualConfigId = 'virtual:homeframe/config';
+const resolvedVirtualConfigId = '\0virtual:homeframe/config';
+
+export function homeframe(config: HomeframeConfig): Plugin {
+  validateConfig(config);
+  let vite: ResolvedConfig;
+  let generated: GeneratedAssetSet | null = null;
+  let buildId = '';
+  let assetsPromise: Promise<GeneratedAssetSet> | null = null;
+
+  return {
+    name: 'homeframe',
+    enforce: 'pre',
+    config() {
+      return {
+        define: {
+          __HOMEFRAME__: 'true',
+        },
+      };
+    },
+    configResolved(resolved) {
+      vite = resolved;
+      buildId = process.env.HOMEFRAME_BUILD_ID
+        ?? `${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${hash(JSON.stringify(config)).slice(0, 8)}`;
+      assetsPromise = generateAssets(config, vite.root, vite.base);
+    },
+    resolveId(id) {
+      return id === virtualConfigId ? resolvedVirtualConfigId : undefined;
+    },
+    load(id) {
+      if (id !== resolvedVirtualConfigId) return undefined;
+      return `export default ${JSON.stringify({
+        app: config.app,
+        buildId,
+        serviceWorker: config.serviceWorker === false ? false : {
+          url: joinBase(vite.base, config.serviceWorker?.fileName ?? 'sw.js'),
+          scope: config.app.scope,
+          mode: config.serviceWorker?.update?.mode ?? 'automatic',
+          reload: config.serviceWorker?.update?.reload ?? 'safe-point',
+        },
+      })};`;
+    },
+    async buildStart() {
+      generated = await assetsPromise!;
+      for (const asset of generated.assets) this.emitFile({
+        type: 'asset',
+        fileName: asset.fileName,
+        source: asset.source,
+      });
+      const manifest = `${JSON.stringify(createManifest(config, vite.base), null, 2)}\n`;
+      this.emitFile({ type: 'asset', fileName: 'manifest.webmanifest', source: manifest });
+      this.emitFile({
+        type: 'asset',
+        fileName: 'generated/asset-report.json',
+        source: `${JSON.stringify(generated.assets.map(assetReport), null, 2)}\n`,
+      });
+    },
+    async transformIndexHtml(html) {
+      generated ??= await assetsPromise!;
+      ensureNoConflictingMetadata(html);
+      const nonce = config.security?.cspNonce;
+      const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
+      const serviceWorkerUrl = config.serviceWorker === false
+        ? null
+        : joinBase(vite.base, config.serviceWorker?.fileName ?? 'sw.js');
+      const critical = criticalCss(config);
+      const boot = bootScript({
+        appId: config.app.id,
+        buildId,
+        backgroundColor: config.app.backgroundColor,
+        serviceWorkerUrl,
+        serviceWorkerScope: config.app.scope,
+      });
+      const startupLinks = generated.startupLinks.map(({ href, media }) =>
+        `<link rel="apple-touch-startup-image" href="${escapeHtml(href)}" media="${escapeHtml(media)}">`).join('\n');
+      const head = [
+        '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">',
+        '<meta name="apple-mobile-web-app-capable" content="yes">',
+        '<meta name="mobile-web-app-capable" content="yes">',
+        `<meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.shortName)}">`,
+        `<meta name="apple-mobile-web-app-status-bar-style" content="${config.splash?.appleStatusBarStyle ?? 'black'}">`,
+        `<meta name="color-scheme" content="${documentColorScheme(config)}">`,
+        ...themeColorMetadata(config),
+        `<link rel="manifest" href="${joinBase(vite.base, 'manifest.webmanifest')}">`,
+        `<link rel="apple-touch-icon" href="${joinBase(vite.base, 'generated/apple-touch-icon.png')}">`,
+        `<link rel="icon" type="image/png" sizes="32x32" href="${joinBase(vite.base, 'generated/favicon-32.png')}">`,
+        startupLinks,
+        `<style id="homeframe-critical"${nonceAttribute}>${critical}</style>`,
+        `<script id="homeframe-bootstrap"${nonceAttribute}>${boot}</script>`,
+      ].filter(Boolean).join('\n');
+      const splash = `<div id="homeframe-boot-splash" aria-hidden="true"><img src="${generated.inlineLogo}" alt=""><span>${escapeHtml(config.splash?.title ?? config.app.name)}</span></div>`;
+      return html.replace(/<head([^>]*)>/i, `<head$1>\n${head}`)
+        .replace(/<body([^>]*)>/i, `<body$1>\n${splash}`);
+    },
+    async configureServer(server) {
+      generated ??= await assetsPromise!;
+      const manifest = Buffer.from(JSON.stringify(createManifest(config, vite.base)), 'utf8');
+      const assetMap = new Map(generated.assets.map((asset) => [`/${asset.fileName}`, asset]));
+      server.middlewares.use((request, response, next) => {
+        const pathname = new URL(request.url ?? '/', 'http://homeframe.local').pathname;
+        if (pathname === joinBase(vite.base, 'manifest.webmanifest')) {
+          response.setHeader('Content-Type', 'application/manifest+json');
+          response.end(manifest);
+          return;
+        }
+        const relativePath = vite.base === '/' ? pathname : pathname.slice(vite.base.length - 1);
+        const asset = assetMap.get(relativePath);
+        if (asset) {
+          response.setHeader('Content-Type', asset.mimeType);
+          response.end(asset.source);
+          return;
+        }
+        next();
+      });
+    },
+    async writeBundle() {
+      if (config.serviceWorker === false || config.serviceWorker?.enabled === false) return;
+      const outDir = isAbsolute(vite.build.outDir)
+        ? vite.build.outDir
+        : resolve(vite.root, vite.build.outDir);
+      const swFile = config.serviceWorker?.fileName ?? 'sw.js';
+      const swConfig = config.serviceWorker;
+      const precache = await collectPrecache(outDir, swFile, config, swConfig, vite.base);
+      const worker = generateServiceWorker({
+        appId: config.app.id,
+        buildId,
+        scope: config.app.scope,
+        documentFallback: swConfig?.documentFallback ?? config.app.startUrl,
+        precache,
+        ...(swConfig?.navigationAllow ? { navigationAllow: swConfig.navigationAllow } : {}),
+        ...(swConfig?.navigationDeny ? { navigationDeny: swConfig.navigationDeny } : {}),
+        ...(swConfig?.navigationTimeoutSeconds === undefined ? {} : {
+          navigationTimeoutSeconds: swConfig.navigationTimeoutSeconds,
+        }),
+        ...(swConfig?.runtimeCaching ? { runtimeCaching: swConfig.runtimeCaching } : {}),
+        ...(swConfig?.cleanupOutdated === undefined ? {} : {
+          cleanupOutdated: swConfig.cleanupOutdated,
+        }),
+        ...(swConfig?.legacyNamesToDelete ? { legacyNamesToDelete: swConfig.legacyNamesToDelete } : {}),
+        ...(swConfig?.notifications === undefined ? {} : { notifications: swConfig.notifications }),
+      });
+      const output = resolve(outDir, swFile);
+      await mkdir(dirname(output), { recursive: true });
+      await writeFile(output, worker);
+      await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
+        appId: config.app.id,
+        buildId,
+        generatedAt: new Date().toISOString(),
+        serviceWorker: joinBase(vite.base, swFile),
+        precacheEntries: precache.length,
+      }, null, 2)}\n`);
+    },
+  };
+}
+
+async function collectPrecache(
+  outDir: string,
+  swFile: string,
+  config: HomeframeConfig,
+  swConfig: HomeframeServiceWorkerBuildConfig | undefined,
+  base: string,
+): Promise<PrecacheEntry[]> {
+  const entries: PrecacheEntry[] = [];
+  const maximum = swConfig?.precache?.maximumFileSizeBytes ?? 8 * 1024 * 1024;
+  const include = swConfig?.precache?.include ?? [];
+  const exclude = swConfig?.precache?.exclude ?? [/\.map$/];
+  for (const file of await walk(outDir)) {
+    const relativeFile = relative(outDir, file).split(sep).join('/');
+    if (relativeFile === swFile || relativeFile === 'homeframe-build.json') continue;
+    if (exclude.some((pattern) => pattern.test(relativeFile))) continue;
+    if (include.length > 0 && !include.some((pattern) => pattern.test(relativeFile))) continue;
+    const details = await stat(file);
+    if (details.size > maximum) continue;
+    const contents = await readFile(file);
+    const revision = hash(Buffer.concat([
+      contents,
+      Buffer.from(swConfig?.cacheRevisionSalt ?? ''),
+    ]));
+    const url = relativeFile === 'index.html'
+      ? swConfig?.documentFallback ?? config.app.startUrl
+      : joinBase(base, relativeFile);
+    entries.push({ url, revision });
+  }
+  entries.push(...(swConfig?.precache?.additionalEntries ?? []));
+  return dedupeEntries(entries);
+}
+
+async function walk(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await walk(path));
+    else if (entry.isFile()) files.push(path);
+  }
+  return files;
+}
+
+function dedupeEntries(entries: PrecacheEntry[]): PrecacheEntry[] {
+  return [...new Map(entries.map((entry) => [entry.url, entry])).values()];
+}
+
+function assetReport(asset: GeneratedHomeframeAsset) {
+  return {
+    fileName: asset.fileName,
+    mimeType: asset.mimeType,
+    purpose: asset.purpose,
+    width: asset.width,
+    height: asset.height,
+    bytes: typeof asset.source === 'string' ? Buffer.byteLength(asset.source) : asset.source.byteLength,
+    sha256: hash(asset.source),
+  };
+}
+
+function hash(value: string | Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function ensureNoConflictingMetadata(html: string): void {
+  const conflicts = [
+    /<meta[^>]+name=["']viewport["']/i,
+    /<link[^>]+rel=["']manifest["']/i,
+    /<meta[^>]+name=["']apple-mobile-web-app-capable["']/i,
+  ].filter((pattern) => pattern.test(html));
+  if (conflicts.length) {
+    throw new Error('Homeframe owns viewport, manifest, and installed-app metadata. Remove duplicates from index.html.');
+  }
+}
+
+function criticalCss(config: HomeframeConfig): string {
+  const configuredScheme = config.app.colorScheme ?? 'system';
+  const lightBackground = config.app.backgroundColor;
+  const darkBackground = config.app.backgroundColorDark ?? lightBackground;
+  const background = configuredScheme === 'dark' ? darkBackground : lightBackground;
+  const cssScheme = configuredScheme === 'system'
+    ? 'light dark'
+    : `only ${configuredScheme}`;
+  const adaptiveBackground = configuredScheme === 'system'
+    ? `@media(prefers-color-scheme:dark){:root{--hf-app-background:${darkBackground};background:${darkBackground}}}`
+    : '';
+  // Do not position:fixed the document itself. WebKit clips a fixed root above the
+  // standalone bottom scene inset (WebKit 237961/301108), producing the exact
+  // empty strip Homeframe is intended to prevent. The document remains immobile
+  // through overflow:hidden while AppViewport owns visual-viewport positioning.
+  return `:root{--hf-app-background:${background};--hf-color-scheme:${cssScheme};background:${background};color-scheme:var(--hf-color-scheme)}html,body,#homeframe-root{width:100%;height:100%;margin:0;overflow:hidden;background:var(--hf-app-background)}html,body{overscroll-behavior:none}#homeframe-boot-splash{position:fixed;z-index:2147483647;inset:0;display:grid;place-content:center;place-items:center;gap:16px;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);color:CanvasText;background:var(--hf-app-background);font:600 17px/1.2 system-ui,-apple-system,sans-serif;transition:opacity 160ms ease}#homeframe-boot-splash img{width:96px;height:96px;object-fit:contain}:root[data-hf-ready=true]:not([data-hf-splash-visible]) #homeframe-boot-splash{visibility:hidden;opacity:0;pointer-events:none}:root[data-hf-splash-visible] #homeframe-boot-splash{visibility:visible;opacity:1}${adaptiveBackground}@media(prefers-reduced-motion:reduce){#homeframe-boot-splash{transition:none}}`;
+}
+
+function documentColorScheme(config: HomeframeConfig): string {
+  const scheme = config.app.colorScheme ?? 'system';
+  return scheme === 'system' ? 'light dark' : scheme;
+}
+
+function themeColorMetadata(config: HomeframeConfig): string[] {
+  const { app } = config;
+  const scheme = app.colorScheme ?? 'system';
+  if (scheme === 'light') {
+    return [`<meta name="theme-color" content="${app.themeColor}">`];
+  }
+  if (scheme === 'dark') {
+    return [`<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}">`];
+  }
+  return [
+    `<meta name="theme-color" content="${app.themeColor}" media="(prefers-color-scheme: light)">`,
+    `<meta name="theme-color" content="${app.themeColorDark ?? app.themeColor}" media="(prefers-color-scheme: dark)">`,
+  ];
+}
+
+function bootScript(info: {
+  appId: string;
+  buildId: string;
+  backgroundColor: string;
+  serviceWorkerUrl: string | null;
+  serviceWorkerScope: string;
+}): string {
+  return `(function(){var d=document.documentElement,v=window.visualViewport,ms=window.matchMedia;window.__HOMEFRAME_BUILD__=${JSON.stringify(info)};d.dataset.hfReady='false';d.dataset.hfKeyboard='closed';d.dataset.hfDisplayMode=ms&&ms('(display-mode: fullscreen)').matches?'fullscreen':ms&&ms('(display-mode: standalone)').matches?'standalone':ms&&ms('(display-mode: minimal-ui)').matches?'minimal-ui':navigator.standalone===true?'standalone':'browser';function m(){if(d.dataset.hfReady==='true')return;var w=v?v.width:window.innerWidth,h=v?v.height:window.innerHeight,x=v?v.offsetLeft:0,y=v?v.offsetTop:0,z=v?v.scale:1,s=d.style;s.setProperty('--hf-viewport-width',w+'px');s.setProperty('--hf-viewport-height',h+'px');s.setProperty('--hf-viewport-x',x+'px');s.setProperty('--hf-viewport-y',y+'px');s.setProperty('--hf-shell-width',(x+w)+'px');s.setProperty('--hf-shell-height',(y+h)+'px');s.setProperty('--hf-stable-width',window.innerWidth+'px');s.setProperty('--hf-stable-height',window.innerHeight+'px');s.setProperty('--hf-input-min-font-size',(16/Math.min(Math.max(z,.1),1))+'px')}m();v&&v.addEventListener('resize',m,{passive:true});v&&v.addEventListener('scroll',m,{passive:true});window.addEventListener('resize',m,{passive:true})})()`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}

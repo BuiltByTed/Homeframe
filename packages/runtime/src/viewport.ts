@@ -1,0 +1,460 @@
+import { emitRuntimeEvent } from './events.js';
+
+export type KeyboardPhase = 'closed' | 'opening' | 'open' | 'closing';
+export type DisplayMode =
+  | 'standalone'
+  | 'fullscreen'
+  | 'minimal-ui'
+  | 'browser'
+  | 'unknown';
+
+export interface SafeAreaInsets {
+  top: number;
+  right: number;
+  bottom: number;
+  left: number;
+}
+
+export interface HomeframeViewportSnapshot {
+  width: number;
+  height: number;
+  x: number;
+  y: number;
+  stableWidth: number;
+  stableHeight: number;
+  scale: number;
+  orientation: 'portrait' | 'landscape';
+  safeArea: SafeAreaInsets;
+  keyboard: {
+    phase: KeyboardPhase;
+    height: number;
+    source: 'virtual-keyboard' | 'visual-viewport' | 'none';
+  };
+  displayMode: DisplayMode;
+  revision: number;
+}
+
+export interface ViewportRuntimeOptions {
+  keyboardThresholdPx?: number;
+  keyboardThresholdRatio?: number;
+  inputZoomMinimumPx?: number;
+  strictInputZoom?: boolean;
+  settleDelaysMs?: number[];
+}
+
+interface VirtualKeyboardLike extends EventTarget {
+  boundingRect?: DOMRectReadOnly;
+  overlaysContent?: boolean;
+}
+
+interface NavigatorWithVirtualKeyboard extends Navigator {
+  virtualKeyboard?: VirtualKeyboardLike;
+  standalone?: boolean;
+}
+
+const defaultViewport: HomeframeViewportSnapshot = {
+  width: 0,
+  height: 0,
+  x: 0,
+  y: 0,
+  stableWidth: 0,
+  stableHeight: 0,
+  scale: 1,
+  orientation: 'portrait',
+  safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+  keyboard: { phase: 'closed', height: 0, source: 'none' },
+  displayMode: 'unknown',
+  revision: 0,
+};
+
+const editableSelector =
+  'input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable]:not([contenteditable="false"])';
+
+export function isEditableElement(value: EventTarget | null): value is HTMLElement {
+  return value instanceof HTMLElement && value.matches(editableSelector);
+}
+
+export function detectDisplayMode(): DisplayMode {
+  if (typeof window === 'undefined') return 'unknown';
+  for (const mode of ['fullscreen', 'standalone', 'minimal-ui'] as const) {
+    if (window.matchMedia(`(display-mode: ${mode})`).matches) return mode;
+  }
+  if ((navigator as NavigatorWithVirtualKeyboard).standalone === true) return 'standalone';
+  return 'browser';
+}
+
+function finite(value: number, fallback: number): number {
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function closeEnough(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.5;
+}
+
+export class ViewportController {
+  private options: Required<ViewportRuntimeOptions>;
+  private snapshot: HomeframeViewportSnapshot = defaultViewport;
+  private listeners = new Set<() => void>();
+  private abortController: AbortController | null = null;
+  private safeAreaProbe: HTMLDivElement | null = null;
+  private frameRequest = 0;
+  private settleTimers = new Set<number>();
+  private stableSamples = 0;
+  private lastCandidate: Omit<HomeframeViewportSnapshot, 'revision'> | null = null;
+  private focusedEditable: HTMLElement | null = null;
+
+  constructor(options: ViewportRuntimeOptions = {}) {
+    this.options = {
+      keyboardThresholdPx: options.keyboardThresholdPx ?? 120,
+      keyboardThresholdRatio: options.keyboardThresholdRatio ?? 0.18,
+      inputZoomMinimumPx: options.inputZoomMinimumPx ?? 16,
+      strictInputZoom: options.strictInputZoom ?? false,
+      settleDelaysMs: options.settleDelaysMs ?? [50, 150, 320],
+    };
+  }
+
+  getSnapshot = (): HomeframeViewportSnapshot => this.snapshot;
+
+  getServerSnapshot = (): HomeframeViewportSnapshot => defaultViewport;
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  start(): () => void {
+    if (typeof window === 'undefined') return () => undefined;
+    if (this.abortController) return () => this.stop();
+
+    this.abortController = new AbortController();
+    const { signal } = this.abortController;
+    this.createSafeAreaProbe();
+
+    const schedule = () => this.scheduleMeasure();
+    window.addEventListener('resize', schedule, { signal });
+    window.addEventListener('orientationchange', () => this.invalidateStableSize(), {
+      signal,
+    });
+    window.addEventListener('pageshow', () => this.scheduleSettle(), { signal });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.suspendKeyboard();
+      this.scheduleSettle();
+    }, { signal });
+    window.addEventListener('pagehide', () => this.suspendKeyboard(), { signal });
+    window.addEventListener('scroll', () => {
+      if (window.scrollY !== 0 && (window.visualViewport?.scale ?? 1) <= 1.01) {
+        window.scrollTo(0, 0);
+      }
+      schedule();
+    }, { signal, passive: true });
+
+    window.visualViewport?.addEventListener('resize', schedule, { signal });
+    window.visualViewport?.addEventListener('scroll', schedule, { signal });
+
+    const virtualKeyboard = (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard;
+    virtualKeyboard?.addEventListener('geometrychange', schedule, { signal });
+
+    // A click is emitted for an intentional tap but suppressed after a scroll
+    // gesture. Focusing here (before WebKit's default click action) prevents
+    // its layout-viewport pan without making fields grab focus on touch-down.
+    document.addEventListener('click', (event) => {
+      if (!isEditableElement(event.target) || document.activeElement === event.target) return;
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
+      event.target.focus({ preventScroll: true });
+      if (window.scrollX !== scrollX || window.scrollY !== scrollY) {
+        window.scrollTo(scrollX, scrollY);
+      }
+    }, { signal, capture: true, passive: true });
+
+    document.addEventListener('focusin', (event) => {
+      if (!isEditableElement(event.target)) return;
+      this.focusedEditable = event.target;
+      this.auditFocusedElement(event.target);
+      this.scheduleSettle();
+    }, { signal });
+
+    document.addEventListener('focusout', () => {
+      queueMicrotask(() => {
+        this.focusedEditable = isEditableElement(document.activeElement)
+          ? document.activeElement
+          : null;
+        this.scheduleSettle();
+      });
+    }, { signal });
+
+    for (const mode of ['standalone', 'fullscreen', 'minimal-ui'] as const) {
+      window.matchMedia(`(display-mode: ${mode})`).addEventListener('change', () => {
+        this.invalidateStableSize();
+      }, { signal });
+    }
+
+    this.measure(true);
+    this.scheduleSettle();
+    return () => this.stop();
+  }
+
+  stop(): void {
+    this.abortController?.abort();
+    this.abortController = null;
+    if (this.frameRequest) cancelAnimationFrame(this.frameRequest);
+    this.frameRequest = 0;
+    for (const timer of this.settleTimers) window.clearTimeout(timer);
+    this.settleTimers.clear();
+    this.safeAreaProbe?.remove();
+    this.safeAreaProbe = null;
+  }
+
+  scheduleSettle(): void {
+    this.scheduleMeasure();
+    for (const delay of this.options.settleDelaysMs) {
+      const timer = window.setTimeout(() => {
+        this.settleTimers.delete(timer);
+        this.scheduleMeasure();
+      }, delay);
+      this.settleTimers.add(timer);
+    }
+  }
+
+  private scheduleMeasure(): void {
+    if (this.frameRequest) return;
+    this.frameRequest = requestAnimationFrame(() => {
+      this.frameRequest = 0;
+      this.measure(false);
+    });
+  }
+
+  private invalidateStableSize(): void {
+    this.snapshot = { ...this.snapshot, stableHeight: 0, stableWidth: 0 };
+    this.stableSamples = 0;
+    this.lastCandidate = null;
+    this.scheduleSettle();
+  }
+
+  private suspendKeyboard(): void {
+    this.focusedEditable?.blur();
+    this.focusedEditable = null;
+    if (this.snapshot.keyboard.phase === 'closed') return;
+    this.snapshot = {
+      ...this.snapshot,
+      keyboard: { phase: 'closed', height: 0, source: 'none' },
+      revision: this.snapshot.revision + 1,
+    };
+    this.writeCss(this.snapshot);
+    for (const listener of this.listeners) listener();
+    emitRuntimeEvent('viewport-change', this.snapshot);
+  }
+
+  private createSafeAreaProbe(): void {
+    const probe = document.createElement('div');
+    probe.dataset.hfSafeAreaProbe = '';
+    probe.setAttribute('aria-hidden', 'true');
+    probe.style.cssText = [
+      'position:fixed',
+      'inset:0',
+      'visibility:hidden',
+      'pointer-events:none',
+      'padding-top:env(safe-area-inset-top,0px)',
+      'padding-right:env(safe-area-inset-right,0px)',
+      'padding-bottom:env(safe-area-inset-bottom,0px)',
+      'padding-left:env(safe-area-inset-left,0px)',
+    ].join(';');
+    document.documentElement.append(probe);
+    this.safeAreaProbe = probe;
+  }
+
+  private readSafeArea(): SafeAreaInsets {
+    if (!this.safeAreaProbe) return { top: 0, right: 0, bottom: 0, left: 0 };
+    const styles = getComputedStyle(this.safeAreaProbe);
+    return {
+      top: finite(Number.parseFloat(styles.paddingTop), 0),
+      right: finite(Number.parseFloat(styles.paddingRight), 0),
+      bottom: finite(Number.parseFloat(styles.paddingBottom), 0),
+      left: finite(Number.parseFloat(styles.paddingLeft), 0),
+    };
+  }
+
+  private readVirtualKeyboardHeight(): number {
+    const rect = (navigator as NavigatorWithVirtualKeyboard).virtualKeyboard?.boundingRect;
+    return finite(rect?.height ?? 0, 0);
+  }
+
+  private measure(force: boolean): void {
+    const visual = window.visualViewport;
+    const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
+    const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
+    const width = finite(visual?.width ?? layoutWidth, layoutWidth);
+    const height = finite(visual?.height ?? layoutHeight, layoutHeight);
+    const x = finite(visual?.offsetLeft ?? 0, 0);
+    const y = finite(visual?.offsetTop ?? 0, 0);
+    const scale = finite(visual?.scale ?? 1, 1);
+    const orientation = width > height ? 'landscape' as const : 'portrait' as const;
+    const displayMode = detectDisplayMode();
+
+    let stableWidth = this.snapshot.stableWidth;
+    let stableHeight = this.snapshot.stableHeight;
+    if (!stableWidth || !stableHeight) {
+      stableWidth = Math.max(layoutWidth, width);
+      stableHeight = Math.max(layoutHeight, height + y);
+    }
+
+    const virtualKeyboardHeight = this.readVirtualKeyboardHeight();
+    const visualKeyboardHeight = Math.max(0, stableHeight - (height + y));
+    const threshold = Math.min(
+      this.options.keyboardThresholdPx,
+      stableHeight * this.options.keyboardThresholdRatio,
+    );
+    const previousOpen = this.snapshot.keyboard.phase === 'open'
+      || this.snapshot.keyboard.phase === 'opening';
+    const inferredOpen = Boolean(this.focusedEditable)
+      && visualKeyboardHeight >= threshold
+      && scale <= 1.01;
+    const keyboardHeight = virtualKeyboardHeight > 0
+      ? virtualKeyboardHeight
+      : inferredOpen ? visualKeyboardHeight : 0;
+    const keyboardSource = virtualKeyboardHeight > 0
+      ? 'virtual-keyboard' as const
+      : inferredOpen ? 'visual-viewport' as const : 'none' as const;
+
+    let keyboardPhase: KeyboardPhase;
+    if (keyboardHeight > 0) {
+      keyboardPhase = previousOpen && closeEnough(keyboardHeight, this.snapshot.keyboard.height)
+        ? 'open'
+        : 'opening';
+    } else {
+      keyboardPhase = previousOpen || this.snapshot.keyboard.phase === 'closing'
+        ? 'closing'
+        : 'closed';
+      if (keyboardPhase === 'closing' && closeEnough(height + y, stableHeight)) {
+        keyboardPhase = 'closed';
+      }
+    }
+
+    if (keyboardPhase === 'closed' && scale <= 1.01) {
+      stableWidth = Math.max(width + x, layoutWidth);
+      stableHeight = Math.max(height + y, layoutHeight);
+    }
+
+    const candidate = {
+      width,
+      height,
+      x,
+      y,
+      stableWidth,
+      stableHeight,
+      scale,
+      orientation,
+      safeArea: this.readSafeArea(),
+      keyboard: {
+        phase: keyboardPhase,
+        height: keyboardHeight,
+        source: keyboardSource,
+      },
+      displayMode,
+    };
+
+    if (this.lastCandidate
+      && closeEnough(this.lastCandidate.width, candidate.width)
+      && closeEnough(this.lastCandidate.height, candidate.height)
+      && closeEnough(this.lastCandidate.y, candidate.y)
+      && closeEnough(this.lastCandidate.keyboard.height, candidate.keyboard.height)) {
+      this.stableSamples += 1;
+    } else {
+      this.stableSamples = 0;
+    }
+    this.lastCandidate = candidate;
+
+    if (keyboardPhase === 'opening' && this.stableSamples >= 1) {
+      candidate.keyboard.phase = 'open';
+    } else if (keyboardPhase === 'closing' && this.stableSamples >= 1) {
+      candidate.keyboard.phase = 'closed';
+    }
+
+    const serializedPrevious = JSON.stringify({ ...this.snapshot, revision: 0 });
+    const serializedNext = JSON.stringify({ ...candidate, revision: 0 });
+    if (!force && serializedPrevious === serializedNext) return;
+
+    this.snapshot = { ...candidate, revision: this.snapshot.revision + 1 };
+    this.writeCss(this.snapshot);
+    for (const listener of this.listeners) listener();
+    emitRuntimeEvent('viewport-change', this.snapshot);
+  }
+
+  private writeCss(snapshot: HomeframeViewportSnapshot): void {
+    const root = document.documentElement;
+    const px = (value: number) => `${Math.max(0, value)}px`;
+    root.style.setProperty('--hf-viewport-width', px(snapshot.width));
+    root.style.setProperty('--hf-viewport-height', px(snapshot.height));
+    root.style.setProperty('--hf-viewport-x', px(snapshot.x));
+    root.style.setProperty('--hf-viewport-y', px(snapshot.y));
+    const visualRight = snapshot.x + snapshot.width;
+    const visualBottom = snapshot.y + snapshot.height;
+    // Installed apps keep one immutable shell rectangle for their entire
+    // lifetime. Only ViewportDock tracks keyboard height; resizing the shell
+    // itself makes WebKit composite transient copies of the header during the
+    // keyboard animation.
+    const useStableInstalledGeometry = snapshot.displayMode !== 'browser'
+      && snapshot.displayMode !== 'unknown';
+    root.style.setProperty(
+      '--hf-shell-width',
+      px(useStableInstalledGeometry ? Math.max(snapshot.stableWidth, visualRight) : visualRight),
+    );
+    root.style.setProperty(
+      '--hf-shell-height',
+      px(useStableInstalledGeometry ? Math.max(snapshot.stableHeight, visualBottom) : visualBottom),
+    );
+    root.style.setProperty('--hf-stable-width', px(snapshot.stableWidth));
+    root.style.setProperty('--hf-stable-height', px(snapshot.stableHeight));
+    root.style.setProperty('--hf-safe-top', px(snapshot.safeArea.top));
+    root.style.setProperty('--hf-safe-right', px(snapshot.safeArea.right));
+    root.style.setProperty('--hf-safe-bottom', px(snapshot.safeArea.bottom));
+    root.style.setProperty('--hf-safe-left', px(snapshot.safeArea.left));
+    root.style.setProperty(
+      '--hf-effective-safe-bottom',
+      snapshot.keyboard.phase === 'closed' ? px(snapshot.safeArea.bottom) : '0px',
+    );
+    root.style.setProperty('--hf-keyboard-height', px(snapshot.keyboard.height));
+    root.style.setProperty(
+      '--hf-input-min-font-size',
+      px(this.options.inputZoomMinimumPx / Math.min(Math.max(snapshot.scale, 0.1), 1)),
+    );
+    root.style.setProperty(
+      '--hf-keyboard-open',
+      snapshot.keyboard.phase === 'closed' ? '0' : '1',
+    );
+    root.dataset.hfKeyboard = snapshot.keyboard.phase;
+    root.dataset.hfDisplayMode = snapshot.displayMode;
+    root.dataset.hfOrientation = snapshot.orientation;
+  }
+
+  private auditFocusedElement(element: HTMLElement): void {
+    const computedSize = Number.parseFloat(getComputedStyle(element).fontSize);
+    const effectiveMinimum = this.options.inputZoomMinimumPx
+      / Math.min(Math.max(this.snapshot.scale, 0.1), 1);
+    if (computedSize >= effectiveMinimum) return;
+    const detail = {
+      element,
+      computedSize,
+      minimumSize: effectiveMinimum,
+      selector: describeElement(element),
+    };
+    emitRuntimeEvent('input-zoom-risk', detail);
+    const message = `[Homeframe HF_INPUT_ZOOM] ${detail.selector} has ${computedSize}px focused text; `
+      + `use at least ${effectiveMinimum.toFixed(2)}px at the current viewport scale to prevent iOS focus zoom.`;
+    if (this.options.strictInputZoom) throw new Error(message);
+    console.error(message, element);
+  }
+}
+
+function describeElement(element: HTMLElement): string {
+  const id = element.id ? `#${CSS.escape(element.id)}` : '';
+  const classes = [...element.classList].slice(0, 3).map((name) => `.${CSS.escape(name)}`).join('');
+  return `${element.tagName.toLowerCase()}${id}${classes}`;
+}
+
+let defaultController: ViewportController | null = null;
+
+export function getViewportController(options?: ViewportRuntimeOptions): ViewportController {
+  defaultController ??= new ViewportController(options);
+  return defaultController;
+}

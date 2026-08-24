@@ -1,0 +1,308 @@
+@layer homeframe.reset, homeframe.structure, homeframe.interaction;
+
+@layer homeframe.reset {
+  :root {
+    --hf-app-background: #111827;
+    --hf-viewport-width: 100vw;
+    --hf-viewport-height: 100dvh;
+    --hf-viewport-x: 0px;
+    --hf-viewport-y: 0px;
+    --hf-shell-width: 100vw;
+    --hf-shell-height: 100dvh;
+    --hf-stable-width: 100vw;
+    --hf-stable-height: 100dvh;
+    --hf-safe-top: env(safe-area-inset-top, 0px);
+    --hf-safe-right: env(safe-area-inset-right, 0px);
+    --hf-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --hf-safe-left: env(safe-area-inset-left, 0px);
+    --hf-effective-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --hf-keyboard-height: 0px;
+    --hf-keyboard-open: 0;
+    --hf-input-min-font-size: 16px;
+    --hf-header-height: 0px;
+    --hf-bottom-height: 0px;
+    --hf-header-background: var(--hf-app-background);
+    --hf-dock-background: var(--hf-app-background);
+    color-scheme: var(--hf-color-scheme, light dark);
+    background: var(--hf-app-background);
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  html,
+  body,
+  #homeframe-root {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+    background: var(--hf-app-background);
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: inherit;
+  }
+
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+}
+
+@layer homeframe.structure {
+  [data-hf-viewport] {
+    position: absolute;
+    z-index: 0;
+    top: 0;
+    left: 0;
+    width: var(--hf-shell-width);
+    height: var(--hf-shell-height);
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    /*
+     * Keep the shell's origin fixed. During iOS keyboard animation,
+     * visualViewport.offsetTop is transient and must never translate the
+     * header. Extending the shell to the visual bottom lets only the final
+     * grid row (the dock) follow the keyboard.
+     */
+    background: var(--hf-app-background);
+  }
+
+  [data-hf-shell] {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [data-hf-header] {
+    position: relative;
+    z-index: 20;
+    min-width: 0;
+    padding-top: var(--hf-safe-top);
+    padding-right: var(--hf-safe-right);
+    padding-left: var(--hf-safe-left);
+    background: var(--hf-header-background);
+  }
+
+  [data-hf-content] {
+    position: relative;
+    z-index: 0;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  [data-hf-scroll-view] {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
+    scrollbar-gutter: stable;
+  }
+
+  [data-hf-dock] {
+    position: relative;
+    z-index: 20;
+    min-width: 0;
+    padding-right: var(--hf-safe-right);
+    padding-bottom: var(--hf-effective-safe-bottom);
+    padding-left: var(--hf-safe-left);
+    background: var(--hf-dock-background);
+  }
+
+  [data-hf-dock][data-keyboard-policy='hide'] {
+    transition: opacity 120ms ease;
+  }
+
+  :root:is(
+    [data-hf-display-mode='standalone'],
+    [data-hf-display-mode='fullscreen'],
+    [data-hf-display-mode='minimal-ui']
+  ) [data-hf-dock][data-keyboard-policy='avoid'] {
+    transform: translate3d(0, calc(-1 * var(--hf-keyboard-height)), 0);
+    transition:
+      transform 180ms cubic-bezier(.2, .75, .25, 1),
+      padding-bottom 180ms cubic-bezier(.2, .75, .25, 1);
+    will-change: transform;
+  }
+
+  :root:not([data-hf-keyboard='closed']) [data-hf-dock][data-keyboard-policy='hide'] {
+    visibility: hidden;
+    height: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+
+  [data-hf-dock][data-keyboard-policy='overlay'] {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+  }
+
+  [data-hf-portals] {
+    position: absolute;
+    z-index: 1000;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  [data-hf-portals] > * {
+    pointer-events: auto;
+  }
+
+  [data-hf-edge-navigation-surface] {
+    position: fixed;
+    z-index: 2147483000;
+    inset: 0;
+    pointer-events: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  [data-hf-edge-preview] {
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    background: var(--hf-app-background);
+    contain: strict;
+  }
+
+  [data-hf-edge-preview='forward'] {
+    z-index: 110;
+  }
+
+  [data-hf-edge-preview-content] {
+    pointer-events: none !important;
+    transform: translate3d(var(--hf-edge-preview-offset, 0px), 0, 0);
+    will-change: transform;
+  }
+
+  [data-hf-edge-live] {
+    z-index: 100;
+    transform: translate3d(var(--hf-edge-live-offset, 0px), 0, 0);
+    will-change: transform;
+  }
+
+  :root[data-hf-edge-settling] :is(
+    [data-hf-edge-live],
+    [data-hf-edge-preview-content]
+  ) {
+    transition: transform 180ms cubic-bezier(.2, .75, .25, 1);
+  }
+
+  [data-hf-edge-guard] {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: var(--hf-edge-width, 24px);
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  [data-hf-edge-guard='back'] {
+    left: 0;
+  }
+
+  [data-hf-edge-guard='forward'] {
+    right: 0;
+  }
+
+  [data-hf-edge-indicator] {
+    position: absolute;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+    border-radius: 50%;
+    color: CanvasText;
+    background: var(--hf-app-background);
+    opacity: var(--hf-edge-progress, 0);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 28%);
+    transform: translate3d(0, -50%, 0) scale(calc(.78 + var(--hf-edge-progress, 0) * .22));
+  }
+
+  [data-hf-edge-indicator]::before {
+    font: 700 32px/1 ui-sans-serif, system-ui, sans-serif;
+  }
+
+  :root[data-hf-edge-navigation='back'] [data-hf-edge-indicator] {
+    left: max(10px, var(--hf-safe-left));
+  }
+
+  :root[data-hf-edge-navigation='back'] [data-hf-edge-indicator]::before {
+    content: '‹';
+  }
+
+  :root[data-hf-edge-navigation='forward'] [data-hf-edge-indicator] {
+    right: max(10px, var(--hf-safe-right));
+  }
+
+  :root[data-hf-edge-navigation='forward'] [data-hf-edge-indicator]::before {
+    content: '›';
+  }
+}
+
+@layer homeframe.interaction {
+  [data-hf-selection='controls-only'] {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  [data-hf-selection='controls-only'] :is(
+    input,
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable='false']),
+    [data-hf-selectable],
+    pre,
+    code
+  ) {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  [data-hf-no-callout] {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+  }
+
+  [data-hf-viewport] :is(
+    input:not([type='button']):not([type='submit']):not([type='reset']),
+    textarea,
+    select,
+    [contenteditable]:not([contenteditable='false'])
+  ) {
+    font-size: max(var(--hf-input-min-font-size, 16px), 1rem);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    [data-hf-viewport] *,
+    [data-hf-viewport] *::before,
+    [data-hf-viewport] *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}

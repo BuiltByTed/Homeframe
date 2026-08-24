@@ -1,0 +1,27 @@
+{
+  "name": "@homeframe/vite",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --external vite --clean"
+  },
+  "dependencies": {
+    "@homeframe/runtime": "0.1.0",
+    "@homeframe/sw": "0.1.0",
+    "sharp": "0.35.3"
+  },
+  "peerDependencies": {
+    "vite": ">=7"
+  }
+}

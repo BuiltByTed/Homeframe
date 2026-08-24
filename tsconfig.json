@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest/globals", "vite/client"]
+  },
+  "include": [
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "examples/**/*.ts",
+    "examples/**/*.tsx",
+    "tests/**/*.ts",
+    "vite.config.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": ["**/dist/**", "node_modules"]
+}

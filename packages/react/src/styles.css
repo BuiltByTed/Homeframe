@@ -1,0 +1,55 @@
+@import '@homeframe/runtime/styles.css';
+
+@layer homeframe.structure {
+  [data-hf-react-splash] {
+    position: absolute;
+    z-index: 2000;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: var(--hf-app-background);
+    transition: opacity 160ms ease;
+  }
+
+  :root[data-hf-ready='true']:not([data-hf-splash-visible]) [data-hf-react-splash] {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  [data-hf-diagnostics] {
+    position: absolute;
+    z-index: 9999;
+    top: calc(var(--hf-safe-top) + 8px);
+    right: calc(var(--hf-safe-right) + 8px);
+    width: min(360px, calc(100% - var(--hf-safe-left) - var(--hf-safe-right) - 16px));
+    max-height: calc(100% - var(--hf-safe-top) - var(--hf-effective-safe-bottom) - 16px);
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid rgb(255 255 255 / 35%);
+    border-radius: 10px;
+    color: white;
+    background: rgb(0 0 0 / 88%);
+    box-shadow: 0 8px 30px rgb(0 0 0 / 35%);
+    font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  [data-hf-diagnostics] dl {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 3px 8px;
+    margin: 8px 0 0;
+  }
+
+  [data-hf-diagnostics] dt {
+    opacity: 0.65;
+  }
+
+  [data-hf-diagnostics] dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}

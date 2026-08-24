@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+test-results/
+playwright-report/
+.DS_Store
+*.log
+*.mp4
+*.xcresult/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.homeframe/
+**/.homeframe/
+examples/kitchen-sink/public/generated/

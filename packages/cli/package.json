@@ -1,0 +1,17 @@
+{
+  "name": "@homeframe/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "files": ["dist"],
+  "bin": {
+    "homeframe": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --sourcemap --clean"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  }
+}
