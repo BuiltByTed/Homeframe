@@ -77,6 +77,7 @@ describe('service-worker generator', () => {
     expect(worker).toContain('deleteMeta(cacheName, request.url)');
     expect(worker).toContain('rangedResponse');
     expect(worker).toContain('^bytes=(\\d*)-(\\d*)$');
+    expect(worker).toContain('ignoreSearch: false, ignoreVary: true');
     expect(worker).toContain("status: 206, statusText: 'Partial Content'");
     expect(worker).toContain('response.status === 206');
     expect(() => new Function(worker)).not.toThrow();

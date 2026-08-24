@@ -490,7 +490,10 @@ self.addEventListener('fetch', (event) => {
   }
   if (PRECACHE_URLS.has(url.href)) {
     event.respondWith(caches.open(HF.precacheName).then(async (cache) =>
-      await cache.match(request, { ignoreSearch: false }) || fetch(request)));
+      // Precache entries are exact-URL and content-hash verified during
+      // installation. Ignore response Vary headers here so common static-host
+      // Vary: Origin policies cannot make present shell assets miss offline.
+      await cache.match(request, { ignoreSearch: false, ignoreVary: true }) || fetch(request)));
     return;
   }
   const rule = ruleFor(request);
