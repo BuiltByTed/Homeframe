@@ -267,9 +267,7 @@ final class HomeframeSimulatorUITests: XCTestCase {
 
         let header = safari.staticTexts["Homeframe"]
         let main = safari.otherElements["main"]
-        let bottomLink = safari.links
-            .matching(NSPredicate(format: "label CONTAINS 'PWA'"))
-            .firstMatch
+        let bottomLink = safari.links["◉ PWA"]
         XCTAssertTrue(header.waitForExistence(timeout: 15))
         XCTAssertTrue(main.waitForExistence(timeout: 15))
         XCTAssertTrue(bottomLink.waitForExistence(timeout: 15))
