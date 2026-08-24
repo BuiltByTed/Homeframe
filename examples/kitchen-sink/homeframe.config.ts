@@ -36,7 +36,9 @@ export default defineHomeframe({
     title: 'Homeframe',
     logo: './brand/icon.svg',
     generateAppleStartupImages: true,
-    appleStatusBarStyle: 'black',
+    // Let the shell paint the top safe area so an in-app light/dark override
+    // also updates the installed iOS status-bar surface.
+    appleStatusBarStyle: 'black-translucent',
   },
   viewport: {
     selection: 'controls-only',
@@ -49,7 +51,9 @@ export default defineHomeframe({
     edgeNavigation: { edgeWidth: 24, commitDistance: 88 },
   },
   nudges: {
-    policyVersion: 1,
+    // v2 clears the one-frame impressions recorded by the original demo
+    // before the live-impression latch was fixed.
+    policyVersion: 2,
     install: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
     notifications: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 10 },
   },

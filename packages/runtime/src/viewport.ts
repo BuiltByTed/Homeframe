@@ -418,10 +418,16 @@ export class ViewportController {
   }
 
   private physicalViewportHeight(layoutHeight: number): number {
-    if (!this.isIosStandalone()) return layoutHeight;
-    const screenHeight = finite(window.screen?.height ?? 0, 0);
-    const outerHeight = finite(window.outerHeight, 0);
-    return Math.max(layoutHeight, window.innerHeight, screenHeight || outerHeight);
+    /*
+     * `screen.height` includes native UI that may sit outside the standalone
+     * WebView. With an opaque iOS status bar, for example, a 874pt screen owns
+     * an 812pt layout viewport. Using the screen height makes the shell 62px
+     * too tall, pushes its dock offscreen, and prevents keyboard close
+     * detection from ever matching the restored visual viewport. The closed
+     * layout viewport is the physical application frame; once captured in
+     * stableHeight it remains fixed while the keyboard animates.
+     */
+    return Math.max(layoutHeight, finite(window.innerHeight, layoutHeight));
   }
 
   private readPageTop(layoutHeight?: number): number {

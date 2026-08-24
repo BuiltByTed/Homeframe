@@ -62,6 +62,7 @@ interface NudgeContextValue {
   engagedMs: number;
   records: Record<NudgeKind, NudgeRecord>;
   candidates: Record<NudgeKind, boolean>;
+  activeImpressions: Record<NudgeKind, boolean>;
   criticalTasks: readonly string[];
   setCandidate(kind: NudgeKind, value: boolean): void;
   registerCriticalTask(name: string): () => void;
@@ -100,6 +101,10 @@ export function HomeframeNudgeProvider({
     notifications: emptyRecord(policyVersion),
   });
   const [candidates, setCandidates] = useState<Record<NudgeKind, boolean>>({
+    install: false,
+    notifications: false,
+  });
+  const [activeImpressions, setActiveImpressions] = useState<Record<NudgeKind, boolean>>({
     install: false,
     notifications: false,
   });
@@ -206,6 +211,11 @@ export function HomeframeNudgeProvider({
 
   const setCandidate = useCallback((kind: NudgeKind, value: boolean) => {
     setCandidates((current) => current[kind] === value ? current : { ...current, [kind]: value });
+    if (!value) {
+      setActiveImpressions((current) => current[kind]
+        ? { ...current, [kind]: false }
+        : current);
+    }
   }, []);
 
   const baseEligible = useCallback((kind: NudgeKind, policy: NudgePolicy = {}) => {
@@ -226,6 +236,10 @@ export function HomeframeNudgeProvider({
       || criticalTasks.length > 0
       || (resolvedPolicy.requiresNetwork && !navigator.onLine)
     )) return false;
+    // Recording the impression starts a live presentation. Cooldown and count
+    // limits apply the next time policy is evaluated in a new presentation,
+    // not one render later while the current nudge is still on screen.
+    if (activeImpressions[kind]) return true;
     const pathname = typeof location === 'undefined' ? '/' : location.pathname;
     if (resolvedPolicy.routes?.length && !resolvedPolicy.routes.some((route) => routeMatches(pathname, route))) return false;
     if (sessions < resolvedPolicy.minSessions || engagedMs < resolvedPolicy.minEngagedMs) return false;
@@ -234,7 +248,7 @@ export function HomeframeNudgeProvider({
     if (record.lastShownAt
       && Date.now() - record.lastShownAt < resolvedPolicy.cooldownDays * 86_400_000) return false;
     return true;
-  }, [candidates, criticalTasks.length, engagedMs, records, sessions]);
+  }, [activeImpressions, candidates, criticalTasks.length, engagedMs, records, sessions]);
 
   const eligible = useCallback((kind: NudgeKind, policy: NudgePolicy = {}) => {
     if (!baseEligible(kind, policy)) return false;
@@ -259,28 +273,43 @@ export function HomeframeNudgeProvider({
     engagedMs,
     records,
     candidates,
+    activeImpressions,
     criticalTasks,
     setCandidate,
     registerCriticalTask,
     eligible,
-    impression: (kind) => write(kind, (record) => ({
-      ...record,
-      impressions: record.lastShownAt && Date.now() - record.lastShownAt < 5_000
-        ? record.impressions
-        : record.impressions + 1,
-      lastShownAt: Date.now(),
-    })),
-    dismiss: (kind, permanent = false) => write(kind, (record) => ({
-      ...record,
-      permanent,
-      snoozedUntil: permanent ? null : Date.now() + 7 * 86_400_000,
-    })),
-    snooze: (kind, days = 7) => write(kind, (record) => ({
-      ...record,
-      snoozedUntil: Date.now() + days * 86_400_000,
-    })),
-    success: (kind) => write(kind, (record) => ({ ...record, success: true })),
-  }), [candidates, criticalTasks, eligible, engagedMs, records, registerCriticalTask, resolved, sessions, setCandidate, write]);
+    impression: (kind) => {
+      setActiveImpressions((current) => current[kind]
+        ? current
+        : { ...current, [kind]: true });
+      write(kind, (record) => ({
+        ...record,
+        impressions: record.lastShownAt && Date.now() - record.lastShownAt < 5_000
+          ? record.impressions
+          : record.impressions + 1,
+        lastShownAt: Date.now(),
+      }));
+    },
+    dismiss: (kind, permanent = false) => {
+      setActiveImpressions((current) => ({ ...current, [kind]: false }));
+      write(kind, (record) => ({
+        ...record,
+        permanent,
+        snoozedUntil: permanent ? null : Date.now() + 7 * 86_400_000,
+      }));
+    },
+    snooze: (kind, days = 7) => {
+      setActiveImpressions((current) => ({ ...current, [kind]: false }));
+      write(kind, (record) => ({
+        ...record,
+        snoozedUntil: Date.now() + days * 86_400_000,
+      }));
+    },
+    success: (kind) => {
+      setActiveImpressions((current) => ({ ...current, [kind]: false }));
+      write(kind, (record) => ({ ...record, success: true }));
+    },
+  }), [activeImpressions, candidates, criticalTasks, eligible, engagedMs, records, registerCriticalTask, resolved, sessions, setCandidate, write]);
 
   return <NudgeContext.Provider value={value}>{children}</NudgeContext.Provider>;
 }

@@ -121,6 +121,20 @@ describe('React shell primitives', () => {
     expect(screen.getByTestId('notification-eligible')).toHaveTextContent('true');
   });
 
+  it('keeps the current nudge eligible after recording its impression', async () => {
+    render(
+      <HomeframeNudgeProvider config={{
+        install: { minSessions: 1, minEngagedMs: 0, cooldownDays: 1, maxImpressions: 3 },
+      }}>
+        <NudgeHarness />
+      </HomeframeNudgeProvider>,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('install-eligible')).toHaveTextContent('true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Record install impression' }));
+    await waitFor(() => expect(screen.getByTestId('install-eligible')).toHaveTextContent('true'));
+  });
+
   it('suppresses all nudges while an app-defined critical task is active', async () => {
     let release: () => void = () => undefined;
     render(
@@ -227,6 +241,7 @@ function NudgeHarness({
       <output data-testid="install-eligible">{String(nudges.eligible('install', nudges.config.install))}</output>
       <output data-testid="notification-eligible">{String(nudges.eligible('notifications', nudges.config.notifications))}</output>
       <button onClick={() => nudges.dismiss('install', true)}>Dismiss install permanently</button>
+      <button onClick={() => nudges.impression('install')}>Record install impression</button>
       <button onClick={() => onCriticalTask?.(nudges.registerCriticalTask('checkout'))}>Start critical task</button>
     </div>
   );

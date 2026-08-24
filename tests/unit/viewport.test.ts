@@ -75,7 +75,7 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
-  it('counteracts standalone iOS page pan and preserves physical screen height', async () => {
+  it('counteracts standalone iOS page pan without including native UI outside the WebView', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
     Object.defineProperty(window.screen, 'height', { value: 852, configurable: true });
@@ -102,14 +102,35 @@ describe('ViewportController', () => {
     await new Promise((resolve) => setTimeout(resolve, 15));
 
     expect(controller.getSnapshot()).toMatchObject({
-      stableHeight: 852,
+      stableHeight: 844,
       pageTop: 64,
-      keyboard: { height: 352 },
+      keyboard: { height: 344 },
     });
     expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('64px');
-    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('852px');
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('844px');
     expect(scroller.scrollTop).toBe(275);
     expect(document.documentElement.dataset.hfIosStandalone).toBe('true');
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it.each([
+    { appHeight: 647, screenHeight: 667 },
+    { appHeight: 790, screenHeight: 852 },
+    { appHeight: 812, screenHeight: 874 },
+    { appHeight: 870, screenHeight: 932 },
+  ])('uses the measured $appHeight px app frame on a $screenHeight px iPhone screen', ({ appHeight, screenHeight }) => {
+    const viewport = installViewport();
+    viewport.height = appHeight;
+    Object.defineProperty(window, 'innerHeight', { value: appHeight, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: screenHeight, configurable: true });
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [] });
+    controller.start();
+
+    expect(controller.getSnapshot().stableHeight).toBe(appHeight);
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe(`${appHeight}px`);
     controller.stop();
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
     Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });

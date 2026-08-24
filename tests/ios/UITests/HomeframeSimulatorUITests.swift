@@ -16,6 +16,12 @@ final class HomeframeSimulatorUITests: XCTestCase {
         XCTAssertEqual(window.height, 874, accuracy: 1)
         XCTAssertTrue(appTitle.frame.minY >= window.minY)
         XCTAssertTrue(webApp.otherElements["main"].exists)
+        let bottomLink = webApp.links
+            .matching(NSPredicate(format: "label CONTAINS 'PWA'"))
+            .firstMatch
+        XCTAssertTrue(bottomLink.waitForExistence(timeout: 10))
+        XCTAssertLessThanOrEqual(bottomLink.frame.maxY, window.maxY - 28)
+        XCTAssertGreaterThan(bottomLink.frame.minY, window.maxY - 130)
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "Homeframe Standalone"
