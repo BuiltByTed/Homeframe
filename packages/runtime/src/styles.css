@@ -19,6 +19,8 @@
     --hf-effective-safe-bottom: env(safe-area-inset-bottom, 0px);
     --hf-keyboard-height: 0px;
     --hf-dock-keyboard-offset: 0px;
+    --hf-dock-keyboard-transition-duration: 225ms;
+    --hf-dock-keyboard-transition-easing: cubic-bezier(.42, 0, 1, 1);
     --hf-keyboard-open: 0;
     --hf-input-min-font-size: 16px;
     --hf-header-height: 0px;
@@ -355,8 +357,8 @@
   ) [data-hf-dock][data-keyboard-policy='avoid'] {
     transform: translate3d(0, calc(-1 * var(--hf-dock-keyboard-offset)), 0);
     transition:
-      transform 250ms cubic-bezier(.42, 0, .58, 1),
-      padding-bottom 250ms cubic-bezier(.42, 0, .58, 1);
+      transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing),
+      padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing);
     will-change: transform;
   }
 

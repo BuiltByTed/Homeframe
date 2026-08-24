@@ -101,7 +101,7 @@ test('desktop shell supports an icon rail, a hidden sidebar, pinned actions, and
   await page.setViewportSize({ width: 899, height: 720 });
   await expect(sidebar).toBeHidden();
   await expect(page.locator('.bottom-nav')).toBeVisible();
-  expect((await page.locator('[data-hf-header]').boundingBox())!.width).toBe(899);
+  await expect.poll(async () => (await page.locator('[data-hf-header]').boundingBox())?.width).toBe(899);
 
   await page.setViewportSize({ width: 1024, height: 720 });
   await expect(sidebar).toBeVisible();
@@ -117,6 +117,21 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
   await page.getByPlaceholder('Persistent bottom composer').fill('survives');
+  const dockTransition = await page.locator('[data-hf-dock]').evaluate((element) => {
+    const root = document.documentElement;
+    const previousDisplayMode = root.dataset.hfDisplayMode;
+    root.dataset.hfDisplayMode = 'standalone';
+    const style = getComputedStyle(element);
+    const result = {
+      duration: style.transitionDuration,
+      easing: style.transitionTimingFunction,
+    };
+    if (previousDisplayMode === undefined) delete root.dataset.hfDisplayMode;
+    else root.dataset.hfDisplayMode = previousDisplayMode;
+    return result;
+  });
+  expect(dockTransition.duration).toContain('0.225s');
+  expect(dockTransition.easing).toContain('cubic-bezier(0.42, 0, 1, 1)');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 
