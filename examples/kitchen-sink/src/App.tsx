@@ -256,7 +256,8 @@ function OverviewPage() {
 function KeyboardPage() {
   const keyboard = useKeyboard();
   const viewport = useViewport();
-  const viewportContract = `${keyboard.phase} · ${keyboard.height.toFixed(0)}px · ${keyboard.source} · scale ${viewport.scale.toFixed(2)} · visual bottom ${((viewport.y + viewport.height) * viewport.scale).toFixed(1)} · document scroll ${window.scrollY.toFixed(0)}`;
+  const appScroll = document.querySelector<HTMLElement>('[data-hf-scroll-view]')?.scrollTop ?? 0;
+  const viewportContract = `${keyboard.phase} · ${keyboard.height.toFixed(0)}px · ${keyboard.source} · scale ${viewport.scale.toFixed(2)} · visual bottom ${((viewport.y + viewport.height) * viewport.scale).toFixed(1)} · offset top ${viewport.y.toFixed(1)} · page top ${viewport.pageTop.toFixed(1)} · app scroll ${appScroll.toFixed(1)} · document scroll ${window.scrollY.toFixed(0)}`;
   return (
     <Page eyebrow="Viewport lab" title="Open, switch, and close the keyboard">
       <div

@@ -62,6 +62,11 @@ final class HomeframeSimulatorUITests: XCTestCase {
         )
         XCTAssertTrue(waitUntil(timeout: 2) { contract.label.contains("closed") })
 
+        let routeAnchor = webApp.staticTexts[
+            "The top bar must remain visible, the page itself must not slide, and the bottom composer must meet the keyboard."
+        ]
+        XCTAssertTrue(routeAnchor.waitForExistence(timeout: 5))
+        let routeAnchorY = routeAnchor.frame.minY
         tapCenter(of: textField, in: webApp)
         let composer = webApp.textFields["Persistent composer"]
         let sceneOrigin = webApp.otherElements["banner"].frame.minY
@@ -71,6 +76,7 @@ final class HomeframeSimulatorUITests: XCTestCase {
         })
         XCTAssertEqual(try viewportScale(from: contract.label), scaleBefore, accuracy: 0.01)
         XCTAssertEqual(header.frame.minY, headerFrame.minY, accuracy: 1)
+        XCTAssertEqual(routeAnchor.frame.minY, routeAnchorY, accuracy: 1)
         XCTAssertEqual(
             composer.frame.maxY,
             sceneOrigin + (try contractNumber(named: "visual bottom", from: contract.label)),
