@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { doctorBuild, doctorSource, inventoryProject, program } from '../../packages/cli/src/index.js';
+import { doctorBuild, doctorSource, inventoryProject, isCliEntryPoint, program } from '../../packages/cli/src/index.js';
 import { generateServiceWorker } from '@homeframe/sw';
 
 const temporaryDirectories: string[] = [];
@@ -13,6 +14,18 @@ afterEach(async () => {
 });
 
 describe('Homeframe doctor built-output checks', () => {
+  it('recognizes the npm .bin symlink as the CLI entrypoint', async () => {
+    const root = await fixtureDirectory();
+    const target = join(root, 'packages/cli/dist/index.js');
+    const bin = join(root, 'node_modules/.bin/homeframe');
+    await writeFixture(root, 'packages/cli/dist/index.js', '#!/usr/bin/env node');
+    await mkdir(dirname(bin), { recursive: true });
+    await symlink(target, bin);
+
+    expect(isCliEntryPoint(pathToFileURL(target).href, bin)).toBe(true);
+    expect(isCliEntryPoint(pathToFileURL(target).href, undefined)).toBe(false);
+  });
+
   it('discovers and validates a non-default generated worker path', async () => {
     const dist = await fixtureDirectory();
     await writeFixture(dist, 'index.html', `<!doctype html>

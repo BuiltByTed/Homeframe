@@ -64,15 +64,36 @@ export function useServiceWorker() {
 
 export function useHomeframeUpdate() {
   const { client: serviceWorker, ...snapshot } = useServiceWorker();
+  const check = useCallback(
+    () => serviceWorker?.check() ?? Promise.resolve(),
+    [serviceWorker],
+  );
+  const activate = useCallback(
+    () => serviceWorker?.activate() ?? Promise.resolve(),
+    [serviceWorker],
+  );
+  const defer = useCallback(() => serviceWorker?.defer(), [serviceWorker]);
+  const registerGuard = useCallback(
+    (guard: () => boolean | Promise<boolean>) =>
+      serviceWorker?.registerGuard(guard) ?? (() => undefined),
+    [serviceWorker],
+  );
+  const purgeRuntimeCache = useCallback(
+    (name: string) => serviceWorker?.purgeRuntimeCache(name) ?? Promise.resolve(),
+    [serviceWorker],
+  );
+  const purgePrivateCaches = useCallback(
+    () => serviceWorker?.purgePrivateCaches() ?? Promise.resolve(),
+    [serviceWorker],
+  );
   return {
     ...snapshot,
-    check: () => serviceWorker?.check() ?? Promise.resolve(),
-    activate: () => serviceWorker?.activate() ?? Promise.resolve(),
-    defer: () => serviceWorker?.defer(),
-    registerGuard: (guard: () => boolean | Promise<boolean>) =>
-      serviceWorker?.registerGuard(guard) ?? (() => undefined),
-    purgeRuntimeCache: (name: string) => serviceWorker?.purgeRuntimeCache(name) ?? Promise.resolve(),
-    purgePrivateCaches: () => serviceWorker?.purgePrivateCaches() ?? Promise.resolve(),
+    check,
+    activate,
+    defer,
+    registerGuard,
+    purgeRuntimeCache,
+    purgePrivateCaches,
   };
 }
 
