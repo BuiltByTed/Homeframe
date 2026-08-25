@@ -9,6 +9,10 @@ describe('runtime structural CSS', () => {
     expect(styles).toMatch(/\[data-hf-keyboard-target='content'\]\s+\[data-hf-scroll-view\]::after\s*\{[^}]*height:\s*var\(--hf-keyboard-height\)/s);
   });
 
+  it('can leave the app visible beneath the native keyboard without an occlusion mask', () => {
+    expect(styles).toMatch(/data-hf-keyboard-occlusion='transparent'[^{}]*\[data-hf-shell\]::after\s*\{[^}]*display:\s*none/s);
+  });
+
   it('stops edge navigation guards outside every measured viewport attachment', () => {
     expect(styles).toMatch(/\[data-hf-edge-guard\]\s*\{[^}]*top:\s*calc\(var\(--hf-header-height\) \+ var\(--hf-top-attachment-height\)\)/s);
     expect(styles).toMatch(/\[data-hf-edge-guard\]\s*\{[^}]*bottom:\s*calc\(var\(--hf-bottom-height\) \+ var\(--hf-bottom-attachment-height\) \+ var\(--hf-dock-keyboard-offset\)\)/s);

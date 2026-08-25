@@ -56,6 +56,7 @@ class FakeServiceWorkerContainer extends EventTarget {
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   document.documentElement.dataset.hfReady = 'true';
   document.documentElement.dataset.hfKeyboard = 'closed';
   delete document.documentElement.dataset.hfModal;
@@ -64,6 +65,15 @@ beforeEach(() => {
 });
 
 describe('HomeframeServiceWorkerClient multi-client coordination', () => {
+  it('carries an update-reload viewport stabilization marker into the new document', () => {
+    sessionStorage.setItem('hf:update-reload:-restored-', String(Date.now()));
+    const client = new HomeframeServiceWorkerClient({ scope: '/restored/' });
+    expect(client.shouldStabilizeUpdateReloadPresentation()).toBe(true);
+    client.completeUpdateReloadPresentation();
+    expect(client.shouldStabilizeUpdateReloadPresentation()).toBe(false);
+    expect(sessionStorage.getItem('hf:update-reload:-restored-')).toBeNull();
+  });
+
   it('activates a launch-time waiting worker before the first app presentation', async () => {
     document.documentElement.dataset.hfReady = 'false';
     const worker = new FakeWorker();

@@ -127,6 +127,7 @@ export interface HomeframeViewportConfig {
   strictInputZoom?: boolean;
   settleDelaysMs?: number[];
   keyboardStabilizationMs?: number;
+  keyboardOcclusion?: 'opaque' | 'transparent';
   topTapToTop?: boolean;
 }
 

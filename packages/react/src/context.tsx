@@ -194,6 +194,47 @@ function LifecyclePresentation({
       && viewportSnapshot.revision > 0
       && routerReady
       && !workerBlocksInitialPresentation) {
+      const updateReload = serviceWorker?.shouldStabilizeUpdateReloadPresentation() ?? false;
+      if (updateReload) {
+        root.dataset.hfUpdateReload = 'restoring';
+        const startedAt = performance.now();
+        let frame = 0;
+        let previousGeometry = '';
+        let stableFrames = 0;
+        const revealStableUpdate = () => {
+          const visual = window.visualViewport;
+          const values = [
+            visual?.width ?? window.innerWidth,
+            visual?.height ?? window.innerHeight,
+            visual?.offsetTop ?? 0,
+            visual?.pageTop ?? 0,
+            visual?.scale ?? 1,
+            window.innerWidth,
+            window.innerHeight,
+          ];
+          const geometry = values.map((value) => Math.round(value * 10) / 10).join(':');
+          const visualBottom = values[1]! + values[2]!;
+          const screenGap = window.screen.height - window.innerHeight;
+          const closed = root.dataset.hfKeyboard === 'closed'
+            && values[4]! <= 1.01
+            && Math.abs(visualBottom - window.innerHeight) <= 2
+            && values[3]! <= 1
+            && window.scrollY === 0
+            && (window.screen.height <= 0 || screenGap <= Math.max(96, viewportSnapshot.safeArea.top * 2));
+          stableFrames = closed && geometry === previousGeometry ? stableFrames + 1 : closed ? 1 : 0;
+          previousGeometry = geometry;
+          if (performance.now() - startedAt < 160 || stableFrames < 3) {
+            frame = requestAnimationFrame(revealStableUpdate);
+            return;
+          }
+          serviceWorker?.completeUpdateReloadPresentation();
+          delete root.dataset.hfUpdateReload;
+          root.dataset.hfReady = 'true';
+          delete root.dataset.hfSplashVisible;
+        };
+        frame = requestAnimationFrame(revealStableUpdate);
+        return () => cancelAnimationFrame(frame);
+      }
       let secondFrame = 0;
       const firstFrame = requestAnimationFrame(() => {
         secondFrame = requestAnimationFrame(() => {
@@ -210,6 +251,7 @@ function LifecyclePresentation({
     lifecycle.phase,
     readiness.pending.length,
     routerReady,
+    serviceWorker,
     snapshot,
     viewportSnapshot.revision,
     workerBlocksInitialPresentation,

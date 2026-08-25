@@ -211,6 +211,7 @@ function clientConfiguration(
         ...(config.viewport?.strictInputZoom === undefined ? {} : { strictInputZoom: config.viewport.strictInputZoom }),
         ...(config.viewport?.settleDelaysMs === undefined ? {} : { settleDelaysMs: config.viewport.settleDelaysMs }),
         ...(config.viewport?.keyboardStabilizationMs === undefined ? {} : { keyboardStabilizationMs: config.viewport.keyboardStabilizationMs }),
+        ...(config.viewport?.keyboardOcclusion === undefined ? {} : { keyboardOcclusion: config.viewport.keyboardOcclusion }),
         ...(config.viewport?.topTapToTop === undefined ? {} : { topTapToTop: config.viewport.topTapToTop }),
       },
       ...(config.nudges ? { nudges: config.nudges } : {}),
