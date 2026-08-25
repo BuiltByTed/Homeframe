@@ -148,6 +148,35 @@ translation together. Do not reproduce that combination with absolute/fixed app
 CSS. The legacy `keyboard="overlay"` value remains compatible, but it means
 overlay placement without keyboard avoidance.
 
+For persistent content that belongs next to existing shell chrome while route
+content scrolls behind it, use a measured viewport attachment:
+
+```tsx
+<AppShell
+  header={<Header />}
+  headerAttachment={<VideoPlayer />}
+  bottom={<BottomNavigation />}
+  bottomAttachment={<SearchComposer />}
+  bottomAttachmentKeyboard="avoid"
+>
+  <AppScrollView>{/* route content */}</AppScrollView>
+</AppShell>
+```
+
+The direct form is `<ViewportAttachment anchor="header">` or
+`<ViewportAttachment anchor="dock" keyboard="avoid">`. Use at most one per
+edge and put any multi-row UI inside it. Homeframe measures the stack, positions
+it against the header/dock, keeps physical-edge controls out of navigation
+guards, and classifies bottom fields as keyboard-dock targets. The primitive
+provides geometry only: the app owns its colors, typography, borders, and other
+visual design.
+
+Never substitute app CSS using `position: fixed` or `position: sticky`.
+`npm run doctor` runs `homeframe doctor --strict`, which reports
+`HF_UNTRACKED_VIEWPORT_UI` and fails the compliance check. When ESLint is part
+of the application toolchain, enable the Homeframe plugin to report inline
+fixed/sticky styles earlier during authoring.
+
 Test all transitions: closed → opening → open, switching between fields, open →
 closing → closed, rotation while focused, hardware keyboard, dictation, emoji,
 and a third-party keyboard. The header must stay fixed, the active control must
@@ -175,6 +204,11 @@ or an unsaved transaction is active; do not defer updates indefinitely.
 Never call `navigator.serviceWorker.register()` yourself. Configure Homeframe's
 worker and update policy in `homeframe.config.ts`, then use Homeframe update state
 and actions for app-owned UI.
+
+With automatic launch checks, Homeframe keeps the HTML startup layer visible
+until a waiting worker has either activated or been safely deferred. Do not hide
+the splash yourself or mark the root ready to avoid an update delay; doing so can
+produce an app → splash → app flash during startup.
 
 ## 8. Add install or notification UI
 

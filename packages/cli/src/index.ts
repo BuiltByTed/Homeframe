@@ -184,6 +184,16 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
       for (const block of text.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
         const selector = block[1] ?? '';
         const declarations = block[2] ?? '';
+        for (const match of declarations.matchAll(/\bposition\s*:\s*(fixed|sticky)\b/gi)) {
+          const declarationOffset = block.index + selector.length + 1;
+          diagnostics.push(warning(
+            'HF_UNTRACKED_VIEWPORT_UI',
+            `App CSS binds ${selector.trim()} to the viewport with ${match[0]}.`,
+            'Use AppHeader, ViewportDock, ViewportAttachment, or HomeframePortal so Homeframe can measure the region.',
+            relativeFile,
+            lineAt(text, declarationOffset + match.index),
+          ));
+        }
         if (!selectorCanMatchEditable(selector)) continue;
         for (const match of declarations.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)px\b/gi)) {
           if (Number(match[1]) >= 16) continue;
@@ -196,6 +206,16 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
             lineAt(text, declarationOffset + match.index),
           ));
         }
+      }
+    } else {
+      for (const match of text.matchAll(/\bposition\s*:\s*['"](fixed|sticky)['"]/gi)) {
+        diagnostics.push(warning(
+          'HF_UNTRACKED_VIEWPORT_UI',
+          `Inline style bypasses Homeframe geometry with ${match[0]}.`,
+          'Use AppHeader, ViewportDock, ViewportAttachment, or HomeframePortal so Homeframe can measure the region.',
+          relativeFile,
+          lineAt(text, match.index),
+        ));
       }
     }
     if (extname(file) === '.html') {

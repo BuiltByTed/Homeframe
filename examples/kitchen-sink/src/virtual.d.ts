@@ -13,3 +13,5 @@ declare module 'virtual:homeframe/config' {
   };
   export default config;
 }
+
+declare const __HOMEFRAME_VERSION__: string;

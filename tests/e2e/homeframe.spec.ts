@@ -109,7 +109,7 @@ test('desktop shell supports an icon rail, a hidden sidebar, pinned actions, and
   await expect.poll(async () => (await sidebar.boundingBox())?.width).toBe(224);
 });
 
-test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for composer', async ({ page }) => {
+test('uses 16px inputs, keeps the document fixed, and attaches composer above bottom nav', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const input = page.getByPlaceholder('Type text');
   await input.click();
@@ -117,7 +117,7 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
   await page.getByPlaceholder('Persistent bottom composer').fill('survives');
-  const dockTransition = await page.locator('[data-hf-dock]').evaluate((element) => {
+  const dockTransition = await page.locator('[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]').evaluate((element) => {
     const root = document.documentElement;
     const previousDisplayMode = root.dataset.hfDisplayMode;
     const previousKeyboardMotion = root.dataset.hfKeyboardMotion;
@@ -158,7 +158,7 @@ test('keyboard page tunes the real sticky composer with copyable curve values', 
   );
   await expect(page.locator('.keyboard-curve-line')).toBeVisible();
 
-  const dockTransition = await page.locator('[data-hf-dock]').evaluate((element) => {
+  const dockTransition = await page.locator('[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]').evaluate((element) => {
     const style = getComputedStyle(element);
     return {
       duration: style.transitionDuration,
@@ -172,9 +172,11 @@ test('keyboard page tunes the real sticky composer with copyable curve values', 
   await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
 });
 
-test('a vertical drag beginning on a dock input scrolls content without focusing it', async ({ page }) => {
+test('a vertical drag beginning on a bottom attachment input scrolls content without focusing it', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const composer = page.getByPlaceholder('Persistent bottom composer');
+  const dismissNudge = page.getByRole('button', { name: 'Dismiss' });
+  if (await dismissNudge.isVisible()) await dismissNudge.click();
   await verticalTouchDrag(page, 'input[placeholder="Persistent bottom composer"]');
   await expect(composer).not.toBeFocused();
   await expect.poll(() => page.locator('[data-hf-scroll-view]').evaluate(element => element.scrollTop)).toBeGreaterThan(0);

@@ -515,9 +515,10 @@ select:focus-visible {
   background: var(--demo-edge);
 }
 
-/* The tuning route deliberately puts a user-selected transition over every
- * measured dock position. It is a kitchen-sink experiment, not framework CSS. */
-:root[data-hf-keyboard-tuning='true'] [data-hf-dock][data-keyboard-policy='avoid'] {
+/* The tuning route deliberately puts a user-selected transition over its
+ * measured attachment. It is a kitchen-sink experiment, not framework CSS. */
+:root[data-hf-keyboard-tuning='true']
+  [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'][data-keyboard-policy='avoid'] {
   transition:
     transform var(--demo-keyboard-duration) var(--demo-keyboard-easing) var(--demo-keyboard-delay),
     padding-bottom var(--demo-keyboard-duration) var(--demo-keyboard-easing) var(--demo-keyboard-delay);

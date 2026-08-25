@@ -28,9 +28,14 @@ const serverSnapshot: ServiceWorkerSnapshot = {
   revision: 0,
 };
 
+const initialSnapshot: ServiceWorkerSnapshot = {
+  ...serverSnapshot,
+  state: 'idle',
+};
+
 export class HomeframeServiceWorkerClient {
   private config: Required<ServiceWorkerClientConfig>;
-  private snapshot: ServiceWorkerSnapshot = serverSnapshot;
+  private snapshot: ServiceWorkerSnapshot = initialSnapshot;
   private listeners = new Set<() => void>();
   private guards = new Set<UpdateGuard>();
   private registration: ServiceWorkerRegistration | null = null;
@@ -49,6 +54,7 @@ export class HomeframeServiceWorkerClient {
   private coordinationStorageKey = '';
   private activationLeaseKey = '';
   private peerSafeStates = new Map<string, PeerSafeState>();
+  private initialPresentationPending: boolean;
 
   constructor(config: ServiceWorkerClientConfig = {}) {
     this.config = {
@@ -62,6 +68,7 @@ export class HomeframeServiceWorkerClient {
       intervalMinutes: config.intervalMinutes ?? 0,
       reloadOnActivate: config.reloadOnActivate ?? true,
     };
+    this.initialPresentationPending = this.config.mode === 'automatic' && this.config.checkOnLaunch;
   }
 
   getSnapshot = (): ServiceWorkerSnapshot => this.snapshot;
@@ -70,9 +77,12 @@ export class HomeframeServiceWorkerClient {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+  /** True while an automatic launch update must finish behind the boot splash. */
+  shouldHoldInitialPresentation = (): boolean => this.initialPresentationPending;
 
   async start(): Promise<() => void> {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      this.releaseInitialPresentation();
       this.publish({ state: 'unsupported' });
       return () => undefined;
     }
@@ -129,8 +139,9 @@ export class HomeframeServiceWorkerClient {
         }
       }, { signal });
 
-      if (this.registration.waiting) this.onWaiting(this.registration.waiting);
-      if (this.config.checkOnLaunch) void this.check();
+      const waitingAtLaunch = this.registration.waiting;
+      if (waitingAtLaunch) await this.onWaiting(waitingAtLaunch);
+      if (this.config.checkOnLaunch && !waitingAtLaunch) await this.check();
       if (this.config.intervalMinutes > 0) {
         this.intervalId = window.setInterval(() => {
           if (document.visibilityState === 'visible') void this.check();
@@ -138,6 +149,9 @@ export class HomeframeServiceWorkerClient {
       }
     } catch (error) {
       this.publish({ state: 'failed', error: errorMessage(error) });
+    }
+    if (!['downloading', 'ready', 'activating', 'reloading'].includes(this.snapshot.state)) {
+      this.releaseInitialPresentation();
     }
     return () => this.stop();
   }
@@ -232,7 +246,7 @@ export class HomeframeServiceWorkerClient {
       this.publish({ state: 'downloading', error: null });
       installing.addEventListener('statechange', () => {
         if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-          this.onWaiting(registration.waiting ?? installing);
+          void this.onWaiting(registration.waiting ?? installing);
         } else if (installing.state === 'redundant') {
           this.followReplacementWorker(registration, installing, activeAtStart, generation);
         }
@@ -255,13 +269,13 @@ export class HomeframeServiceWorkerClient {
       if (generation !== this.updateGeneration) return;
       const waiting = registration.waiting;
       if (waiting && waiting !== redundant) {
-        this.onWaiting(waiting);
+        void this.onWaiting(waiting);
         return;
       }
       const replacement = registration.installing;
       if (replacement && replacement !== redundant) {
         if (replacement.state === 'installed' && navigator.serviceWorker.controller) {
-          this.onWaiting(registration.waiting ?? replacement);
+          void this.onWaiting(registration.waiting ?? replacement);
         } else {
           this.publish({ state: 'downloading', error: null });
         }
@@ -271,19 +285,23 @@ export class HomeframeServiceWorkerClient {
         void this.queryBuild(registration.active).then((buildId) => {
           this.publish({ state: 'current', currentBuild: buildId, availableBuild: null, error: null });
           this.broadcastCoordination('current', buildId);
+          this.releaseInitialPresentation();
         });
         return;
       }
       this.publish({ state: 'failed', error: 'The new service worker became redundant.' });
+      this.releaseInitialPresentation();
     }, 200);
   }
 
-  private onWaiting(worker: ServiceWorker): void {
-    void this.queryBuild(worker).then((buildId) => {
-      this.publish({ state: 'ready', availableBuild: buildId });
-      this.broadcastCoordination('ready', buildId);
-      void this.maybeActivate();
-    });
+  private async onWaiting(worker: ServiceWorker): Promise<void> {
+    const buildId = await this.queryBuild(worker);
+    this.publish({ state: 'ready', availableBuild: buildId });
+    this.broadcastCoordination('ready', buildId);
+    await this.maybeActivate();
+    if (this.snapshot.state === 'deferred' || this.snapshot.state === 'failed') {
+      this.releaseInitialPresentation();
+    }
   }
 
   private async maybeActivate(): Promise<void> {
@@ -324,7 +342,9 @@ export class HomeframeServiceWorkerClient {
     if (document.documentElement.dataset.hfPrompt === 'open') return false;
     if (document.documentElement.dataset.hfCriticalTask) return false;
     if (document.documentElement.dataset.hfRouterReady === 'false') return false;
-    if (document.documentElement.dataset.hfReady !== 'true') return false;
+    // A launch-time update is safest before the first app frame is presented.
+    // Router, keyboard, modal, task, and app guards still protect user state;
+    // requiring hfReady here would force an app paint before the update reload.
     for (const guard of this.guards) {
       try {
         if (!await guard()) return false;
@@ -341,10 +361,16 @@ export class HomeframeServiceWorkerClient {
       void this.queryBuild(navigator.serviceWorker.controller).then((buildId) => {
         this.publish({ state: 'current', currentBuild: buildId, availableBuild: null });
         this.broadcastCoordination('current', buildId);
+        this.releaseInitialPresentation();
       });
       return;
     }
-    if (this.didReload || !this.config.reloadOnActivate) return;
+    if (!this.config.reloadOnActivate) {
+      this.publish({ state: 'current', currentBuild: this.snapshot.availableBuild, availableBuild: null });
+      this.releaseInitialPresentation();
+      return;
+    }
+    if (this.didReload) return;
     this.didReload = true;
     this.broadcastCoordination('current', this.snapshot.availableBuild);
     this.publish({ state: 'reloading' });
@@ -462,6 +488,7 @@ export class HomeframeServiceWorkerClient {
       this.publish({ state: 'activating', availableBuild: value.buildId });
     } else if (value.type === 'current') {
       this.publish({ state: 'current', currentBuild: value.buildId, availableBuild: null });
+      this.releaseInitialPresentation();
     }
   }
 
@@ -530,6 +557,12 @@ export class HomeframeServiceWorkerClient {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('homeframe:update-change', { detail: this.snapshot }));
     }
+  }
+
+  private releaseInitialPresentation(): void {
+    if (!this.initialPresentationPending) return;
+    this.initialPresentationPending = false;
+    this.publish({});
   }
 }
 

@@ -222,7 +222,10 @@ function ApplicationShell() {
           />
         )}
         sidebarStorageKey="homeframe-demo:sidebar-mode"
-        bottom={<ShellBottom routeId={route.match?.route.id} />}
+        bottom={<BottomNav />}
+        bottomKeyboard={route.match?.route.id === 'keyboard' ? 'hide' : 'avoid'}
+        bottomAttachment={route.match?.route.id === 'keyboard' ? <KeyboardComposer /> : null}
+        bottomAttachmentKeyboard="avoid"
       >
         <HomeframeOfflineBoundary offline={<OfflinePage />}>
           <AppScrollView
@@ -253,7 +256,7 @@ function Header() {
       <NoCallout as="div" className="brand-mark">H</NoCallout>
       <div className="header-title">
         <strong>Homeframe</strong>
-        <span>{display} · keyboard {keyboard.phase}</span>
+        <span>v{__HOMEFRAME_VERSION__} · {display} · keyboard {keyboard.phase}</span>
       </div>
       <Link to={appPath('/settings')} className="icon-button" aria-label="Settings">⚙</Link>
     </header>
@@ -341,9 +344,8 @@ function DesktopSidebarFooter({
   );
 }
 
-function ShellBottom({ routeId }: { routeId: string | undefined }) {
+function KeyboardComposer() {
   const [draft, setDraft] = useStateCheckpoint({ key: 'keyboard-draft', initialValue: '' });
-  if (routeId !== 'keyboard') return <BottomNav />;
   return (
     <div className="composer">
       <HomeframeInput aria-label="Persistent composer" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Persistent bottom composer" />

@@ -80,6 +80,11 @@ interface EditablePointerTap {
 type KeyboardTarget = 'none' | 'content' | 'dock';
 type KeyboardMotion = 'idle' | 'tracking' | 'fallback';
 
+const DOCK_KEYBOARD_TARGET_SELECTOR = [
+  '[data-hf-dock]',
+  '[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]',
+].join(', ');
+
 const defaultViewport: HomeframeViewportSnapshot = {
   width: 0,
   height: 0,
@@ -336,7 +341,7 @@ export class ViewportController {
     document.addEventListener('focusin', (event) => {
       if (!isEditableElement(event.target)) return;
       this.focusedEditable = event.target;
-      const keyboardTarget = event.target.closest('[data-hf-dock]') ? 'dock' : 'content';
+      const keyboardTarget = event.target.closest(DOCK_KEYBOARD_TARGET_SELECTOR) ? 'dock' : 'content';
       this.setKeyboardTarget(keyboardTarget);
       if (keyboardTarget === 'content') this.keyboardAnchor = null;
       // A pointer/click guard captures the pre-focus position. WebKit may move
@@ -356,7 +361,7 @@ export class ViewportController {
           ? document.activeElement
           : null;
         if (this.focusedEditable) {
-          this.setKeyboardTarget(this.focusedEditable.closest('[data-hf-dock]') ? 'dock' : 'content');
+          this.setKeyboardTarget(this.focusedEditable.closest(DOCK_KEYBOARD_TARGET_SELECTOR) ? 'dock' : 'content');
         } else if (this.snapshot.keyboard.phase === 'closed') {
           this.setKeyboardTarget('none');
         }
@@ -572,7 +577,7 @@ export class ViewportController {
   private captureKeyboardAnchor(element: HTMLElement): void {
     // Dock controls should not move the route underneath them. Page controls,
     // however, must be allowed to scroll above the keyboard as it opens.
-    if (!element.closest('[data-hf-dock]')) {
+    if (!element.closest(DOCK_KEYBOARD_TARGET_SELECTOR)) {
       this.keyboardAnchor = null;
       return;
     }
@@ -600,7 +605,7 @@ export class ViewportController {
     if (!element.isConnected || document.activeElement === element) return;
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;
-    const pageScroller = element.closest('[data-hf-dock]')
+    const pageScroller = element.closest(DOCK_KEYBOARD_TARGET_SELECTOR)
       ? null
       : this.primaryScroller(element);
     const pageScrollTop = pageScroller?.scrollTop ?? 0;

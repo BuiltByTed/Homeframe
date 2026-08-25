@@ -123,7 +123,11 @@ export function HomeframeProvider({
   return (
     <HomeframeContext.Provider value={value}>
       <HomeframeReadinessProvider>
-        <LifecyclePresentation snapshot={resolvedConfig.snapshot} viewport={viewport}>
+        <LifecyclePresentation
+          snapshot={resolvedConfig.snapshot}
+          viewport={viewport}
+          serviceWorker={serviceWorkerRef.current}
+        >
           <HomeframeNudgeProvider {...(resolvedConfig.nudges ? { config: resolvedConfig.nudges } : {})}>
             {children}
           </HomeframeNudgeProvider>
@@ -149,10 +153,12 @@ function routerIsReady(): boolean {
 function LifecyclePresentation({
   snapshot,
   viewport,
+  serviceWorker,
   children,
 }: {
   snapshot: SnapshotPolicy;
   viewport: ReturnType<typeof getViewportController>;
+  serviceWorker: HomeframeServiceWorkerClient | null;
   children: ReactNode;
 }) {
   const lifecycle = useAppLifecycle();
@@ -163,6 +169,12 @@ function LifecyclePresentation({
     viewport.getServerSnapshot,
   );
   const routerReady = useSyncExternalStore(subscribeToRouterReadiness, routerIsReady, () => true);
+  const workerRevision = useSyncExternalStore(
+    serviceWorker?.subscribe ?? subscribeToNothing,
+    serviceWorker ? () => serviceWorker.getSnapshot().revision : noWorkerRevision,
+    noWorkerRevision,
+  );
+  const workerBlocksInitialPresentation = serviceWorker?.shouldHoldInitialPresentation() ?? false;
   useEffect(() => {
     const root = document.documentElement;
     if (snapshot !== 'preserve' && lifecycle.phase === 'hidden') {
@@ -180,7 +192,8 @@ function LifecyclePresentation({
     if (lifecycle.phase === 'visible'
       && readiness.pending.length === 0
       && viewportSnapshot.revision > 0
-      && routerReady) {
+      && routerReady
+      && !workerBlocksInitialPresentation) {
       let secondFrame = 0;
       const firstFrame = requestAnimationFrame(() => {
         secondFrame = requestAnimationFrame(() => {
@@ -193,8 +206,24 @@ function LifecyclePresentation({
         if (secondFrame) cancelAnimationFrame(secondFrame);
       };
     }
-  }, [lifecycle.phase, readiness.pending.length, routerReady, snapshot, viewportSnapshot.revision]);
+  }, [
+    lifecycle.phase,
+    readiness.pending.length,
+    routerReady,
+    snapshot,
+    viewportSnapshot.revision,
+    workerBlocksInitialPresentation,
+    workerRevision,
+  ]);
   return children;
+}
+
+function subscribeToNothing(): () => void {
+  return () => undefined;
+}
+
+function noWorkerRevision(): number {
+  return 0;
 }
 
 export function useHomeframe(): HomeframeContextValue {
