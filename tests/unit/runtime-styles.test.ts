@@ -24,4 +24,13 @@ describe('runtime structural CSS', () => {
     expect(styles).toMatch(/data-hf-attachment-anchor='header'\]\s*\{[^}]*top:\s*var\(--hf-header-height\)/s);
     expect(styles).toMatch(/data-hf-attachment-anchor='dock'\]\s*\{[^}]*bottom:\s*var\(--hf-bottom-height\)/s);
   });
+
+  it('keeps desktop attachments inside their owning content column', () => {
+    expect(styles).toMatch(/@media \(min-width: 900px\)[\s\S]*data-hf-desktop-layout[^{}]*> \[data-hf-viewport-attachment\]\[data-hf-attachment-anchor='dock'\][^{]*\{[^}]*left:\s*var\(--hf-active-sidebar-width\)/s);
+    expect(styles).toMatch(/data-hf-desktop-layout\]\[data-hf-header-placement='content'\][^{}]*> \[data-hf-viewport-attachment\]\[data-hf-attachment-anchor='header'\][^{]*\{[^}]*left:\s*var\(--hf-active-sidebar-width\)/s);
+  });
+
+  it('gives a dock attachment safe-bottom ownership only without a real dock', () => {
+    expect(styles).toMatch(/\[data-hf-shell\]\[data-hf-has-dock='false'\][^{}]*> \[data-hf-viewport-attachment\]\[data-hf-attachment-anchor='dock'\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
+  });
 });

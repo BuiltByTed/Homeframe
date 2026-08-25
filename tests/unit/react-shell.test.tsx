@@ -76,11 +76,26 @@ describe('React shell primitives', () => {
       </HomeframeProvider>,
     );
     const attachments = container.querySelectorAll('[data-hf-viewport-attachment]');
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'true');
     expect(attachments).toHaveLength(2);
     expect(attachments[0]).toHaveAttribute('data-hf-attachment-anchor', 'header');
     expect(attachments[0]).toHaveAttribute('data-keyboard-policy', 'manual');
     expect(attachments[1]).toHaveAttribute('data-hf-attachment-anchor', 'dock');
     expect(attachments[1]).toHaveAttribute('data-keyboard-policy', 'avoid');
+  });
+
+  it('marks when a bottom attachment must own the safe bottom', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell bottomAttachment={<div>Search</div>}>
+            <AppScrollView>Content</AppScrollView>
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'false');
+    expect(container.querySelector('[data-hf-dock]')).toBeNull();
   });
 
   it('allows direct viewport attachment composition', () => {

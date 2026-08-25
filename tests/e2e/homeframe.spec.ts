@@ -172,6 +172,75 @@ test('keyboard page tunes the real sticky composer with copyable curve values', 
   await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
 });
 
+test('desktop attachments track the content column and no-dock attachments own the safe bottom', async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 760 });
+  await navigateFromShell(page, /Keyboard/);
+  const shell = page.locator('[data-hf-shell]');
+  const content = page.locator('[data-hf-content]');
+  const bottomAttachment = page.locator(
+    '[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]',
+  );
+  const expectAttachmentInContentColumn = async () => {
+    await expect.poll(async () => {
+      const [attachmentBox, contentBox] = await Promise.all([
+        bottomAttachment.boundingBox(),
+        content.boundingBox(),
+      ]);
+      return Math.round((attachmentBox?.x ?? 0) - (contentBox?.x ?? 0));
+    }).toBe(0);
+  };
+
+  await expect(shell).toHaveAttribute('data-hf-has-dock', 'true');
+  await expectAttachmentInContentColumn();
+
+  await page.getByRole('button', { name: 'Icon rail sidebar' }).click();
+  await expectAttachmentInContentColumn();
+
+  await page.getByRole('button', { name: 'Hidden sidebar' }).click();
+  await expectAttachmentInContentColumn();
+
+  await shell.evaluate((element) => {
+    element.setAttribute('data-hf-sidebar-mode', 'expanded');
+    element.setAttribute('data-hf-header-placement', 'content');
+    const attachment = document.createElement('div');
+    attachment.dataset.hfViewportAttachment = '';
+    attachment.dataset.hfAttachmentAnchor = 'header';
+    attachment.dataset.testHeaderAttachment = '';
+    element.append(attachment);
+  });
+  const headerAttachment = page.locator('[data-test-header-attachment]');
+  await expect.poll(async () => {
+    const [attachmentBox, contentBox] = await Promise.all([
+      headerAttachment.boundingBox(),
+      content.boundingBox(),
+    ]);
+    return Math.round((attachmentBox?.x ?? 0) - (contentBox?.x ?? 0));
+  }).toBe(0);
+  await headerAttachment.evaluate((element) => element.remove());
+
+  const safePadding = await shell.evaluate((element) => {
+    const attachment = element.querySelector<HTMLElement>(
+      '[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]',
+    )!;
+    const runtimeStyle = document.getElementById('homeframe-runtime-vars') as HTMLStyleElement;
+    const runtimeRule = runtimeStyle.sheet!.cssRules[0] as CSSStyleRule;
+    const previousSafeBottom = runtimeRule.style.getPropertyValue('--hf-effective-safe-bottom');
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', '34px');
+    const withDock = getComputedStyle(attachment).paddingBottom;
+    element.setAttribute('data-hf-has-dock', 'false');
+    return { withDock, previousSafeBottom };
+  });
+  expect(safePadding.withDock).toBe('0px');
+  await expect.poll(() => bottomAttachment.evaluate(
+    (element) => getComputedStyle(element).paddingBottom,
+  )).toBe('34px');
+  await page.evaluate((previousSafeBottom) => {
+    const runtimeStyle = document.getElementById('homeframe-runtime-vars') as HTMLStyleElement;
+    const runtimeRule = runtimeStyle.sheet!.cssRules[0] as CSSStyleRule;
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', previousSafeBottom);
+  }, safePadding.previousSafeBottom);
+});
+
 test('a vertical drag beginning on a bottom attachment input scrolls content without focusing it', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const composer = page.getByPlaceholder('Persistent bottom composer');
