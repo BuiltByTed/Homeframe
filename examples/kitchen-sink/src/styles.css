@@ -515,6 +515,158 @@ select:focus-visible {
   background: var(--demo-edge);
 }
 
+/* The tuning route deliberately puts a user-selected transition over every
+ * measured dock position. It is a kitchen-sink experiment, not framework CSS. */
+:root[data-hf-keyboard-tuning='true'] [data-hf-dock][data-keyboard-policy='avoid'] {
+  transition:
+    transform var(--demo-keyboard-duration) var(--demo-keyboard-easing) var(--demo-keyboard-delay),
+    padding-bottom var(--demo-keyboard-duration) var(--demo-keyboard-easing) var(--demo-keyboard-delay);
+}
+
+.keyboard-tuning {
+  display: grid;
+  gap: 14px;
+  margin: 24px 0;
+  padding: 16px;
+  border: 1px solid var(--demo-line-strong);
+  border-radius: 18px;
+  background: var(--demo-panel);
+}
+
+.keyboard-tuning > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.keyboard-tuning h2,
+.keyboard-tuning .eyebrow,
+.keyboard-tuning p,
+.keyboard-curve {
+  margin: 0;
+}
+
+.keyboard-tuning > header > output {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--demo-success);
+  background: var(--demo-success-bg);
+  font: 700 0.7rem ui-monospace, monospace;
+}
+
+.keyboard-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.keyboard-preset-grid button {
+  min-height: 40px;
+  padding: 7px 9px;
+  font-size: 0.76rem;
+}
+
+.keyboard-tuning-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.72fr);
+  align-items: center;
+  gap: 18px;
+}
+
+.keyboard-tuning-controls {
+  display: grid;
+  gap: 12px;
+}
+
+.keyboard-tuning-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  color: var(--demo-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.keyboard-tuning-range output {
+  color: var(--demo-heading);
+  font: 700 0.76rem ui-monospace, monospace;
+}
+
+.keyboard-tuning-range input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 32px;
+  accent-color: #2563eb;
+}
+
+.keyboard-curve {
+  display: grid;
+  gap: 8px;
+}
+
+.keyboard-curve svg {
+  width: 100%;
+  overflow: visible;
+  border-radius: 12px;
+  background: var(--demo-input);
+}
+
+.keyboard-curve-grid {
+  fill: none;
+  stroke: var(--demo-line-strong);
+  stroke-width: 0.7;
+}
+
+.keyboard-curve-handles {
+  fill: none;
+  stroke: var(--demo-muted);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+
+.keyboard-curve-line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.keyboard-curve-point {
+  fill: var(--demo-heading);
+  stroke: var(--demo-input);
+  stroke-width: 1.5;
+}
+
+.keyboard-curve figcaption {
+  display: flex;
+  justify-content: space-between;
+  color: var(--demo-muted);
+  font-size: 0.66rem;
+}
+
+.keyboard-tuning-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--demo-selectable-bg);
+}
+
+.keyboard-tuning-result code {
+  overflow-wrap: anywhere;
+  color: var(--demo-selectable);
+  font: 700 0.74rem/1.45 ui-monospace, monospace;
+}
+
+.keyboard-tuning-result button {
+  min-height: 40px;
+  padding: 7px 10px;
+  font-size: 0.74rem;
+}
+
 .status-pill {
   display: inline-flex;
   margin: 18px 0 8px;
@@ -746,6 +898,19 @@ select:focus-visible {
 
 @media (max-width: 520px) {
   .permalink-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .keyboard-tuning-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .keyboard-curve {
+    width: min(68vw, 260px);
+    margin-inline: auto;
+  }
+
+  .keyboard-tuning-result {
     grid-template-columns: 1fr;
   }
 }

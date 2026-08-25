@@ -76,6 +76,40 @@ const permalinkItems = Array.from({ length: 24 }, (_, index) => ({
   text: 'This stable item id can be opened directly after a cold launch or on another device.',
 }));
 
+interface KeyboardTuningSettings {
+  duration: number;
+  delay: number;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+const defaultKeyboardTuning: KeyboardTuningSettings = {
+  duration: 205,
+  delay: 0,
+  x1: 0,
+  y1: 0,
+  x2: 1,
+  y2: 1,
+};
+
+const keyboardCurvePresets: Array<{ label: string; settings: KeyboardTuningSettings }> = [
+  { label: 'Current fallback', settings: defaultKeyboardTuning },
+  {
+    label: 'System ease',
+    settings: { duration: 300, delay: 0, x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
+  },
+  {
+    label: 'Fast landing',
+    settings: { duration: 280, delay: 0, x1: 0.2, y1: 0.8, x2: 0.2, y2: 1 },
+  },
+  {
+    label: 'iOS-style spring',
+    settings: { duration: 320, delay: 0, x1: 0.32, y1: 0.72, x2: 0, y2: 1 },
+  },
+];
+
 const router = createHomeframeRouter([
   { id: 'home', path: appPath(), element: <OverviewPage /> },
   { id: 'keyboard', path: appPath('/keyboard'), element: <KeyboardPage /> },
@@ -370,8 +404,45 @@ function OverviewPage() {
 function KeyboardPage() {
   const keyboard = useKeyboard();
   const viewport = useViewport();
+  const [copied, setCopied] = useState(false);
+  const [tuning, setTuning] = useStateCheckpoint<KeyboardTuningSettings>({
+    key: 'keyboard-transition-tuning',
+    storage: 'local',
+    initialValue: defaultKeyboardTuning,
+    deserialize: (value) => {
+      const parsed = JSON.parse(value) as Partial<KeyboardTuningSettings>;
+      return {
+        duration: Number.isFinite(parsed.duration) ? Number(parsed.duration) : defaultKeyboardTuning.duration,
+        delay: Number.isFinite(parsed.delay) ? Number(parsed.delay) : defaultKeyboardTuning.delay,
+        x1: Number.isFinite(parsed.x1) ? Number(parsed.x1) : defaultKeyboardTuning.x1,
+        y1: Number.isFinite(parsed.y1) ? Number(parsed.y1) : defaultKeyboardTuning.y1,
+        x2: Number.isFinite(parsed.x2) ? Number(parsed.x2) : defaultKeyboardTuning.x2,
+        y2: Number.isFinite(parsed.y2) ? Number(parsed.y2) : defaultKeyboardTuning.y2,
+      };
+    },
+  });
   const appScroll = document.querySelector<HTMLElement>('[data-hf-scroll-view]')?.scrollTop ?? 0;
   const viewportContract = `${keyboard.phase} · ${keyboard.height.toFixed(0)}px · ${keyboard.source} · scale ${viewport.scale.toFixed(2)} · visual bottom ${((viewport.y + viewport.height) * viewport.scale).toFixed(1)} · offset top ${viewport.y.toFixed(1)} · page top ${viewport.pageTop.toFixed(1)} · app scroll ${appScroll.toFixed(1)} · document scroll ${window.scrollY.toFixed(0)}`;
+  const easing = `cubic-bezier(${tuning.x1.toFixed(2)}, ${tuning.y1.toFixed(2)}, ${tuning.x2.toFixed(2)}, ${tuning.y2.toFixed(2)})`;
+  const result = `duration: ${tuning.duration}ms; delay: ${tuning.delay}ms; easing: ${easing};`;
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const runtimeStyle = getHomeframeRootStyle();
+    root.dataset.hfKeyboardTuning = 'true';
+    runtimeStyle.setProperty('--demo-keyboard-duration', `${tuning.duration}ms`);
+    runtimeStyle.setProperty('--demo-keyboard-delay', `${tuning.delay}ms`);
+    runtimeStyle.setProperty('--demo-keyboard-easing', easing);
+    return () => {
+      delete root.dataset.hfKeyboardTuning;
+      runtimeStyle.removeProperty('--demo-keyboard-duration');
+      runtimeStyle.removeProperty('--demo-keyboard-delay');
+      runtimeStyle.removeProperty('--demo-keyboard-easing');
+    };
+  }, [easing, tuning.delay, tuning.duration]);
+  const setNumber = (key: keyof KeyboardTuningSettings, value: number) => {
+    setCopied(false);
+    setTuning((current) => ({ ...current, [key]: value }));
+  };
   return (
     <Page eyebrow="Viewport lab" title="Open, switch, and close the keyboard">
       <div
@@ -380,6 +451,52 @@ function KeyboardPage() {
         aria-label={`Viewport contract: ${viewportContract}`}
       >{viewportContract}</div>
       <p>The top bar must remain visible, the page itself must not slide, and the bottom composer must meet the keyboard.</p>
+      <section className="keyboard-tuning" aria-labelledby="keyboard-tuning-title">
+        <header>
+          <div>
+            <p className="eyebrow">Sticky bar tuner</p>
+            <h2 id="keyboard-tuning-title">Match the composer to the keyboard</h2>
+          </div>
+          <output data-phase={keyboard.phase}>{keyboard.phase}</output>
+        </header>
+        <p>
+          Pick a curve, adjust it, then tap the persistent composer at the bottom
+          to watch a real keyboard cycle. These values affect this lab only.
+        </p>
+        <div className="keyboard-preset-grid" aria-label="Curve presets">
+          {keyboardCurvePresets.map((preset) => (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => {
+                setCopied(false);
+                setTuning(preset.settings);
+              }}
+            >{preset.label}</button>
+          ))}
+        </div>
+        <div className="keyboard-tuning-layout">
+          <div className="keyboard-tuning-controls">
+            <TuningRange label="Duration" value={tuning.duration} min={0} max={600} step={5} unit="ms" onChange={(value) => setNumber('duration', value)} />
+            <TuningRange label="Start delay" value={tuning.delay} min={0} max={200} step={5} unit="ms" onChange={(value) => setNumber('delay', value)} />
+            <TuningRange label="Ease begins (X1)" value={tuning.x1} min={0} max={1} step={0.01} onChange={(value) => setNumber('x1', value)} />
+            <TuningRange label="Opening pull (Y1)" value={tuning.y1} min={0} max={1} step={0.01} onChange={(value) => setNumber('y1', value)} />
+            <TuningRange label="Ease ends (X2)" value={tuning.x2} min={0} max={1} step={0.01} onChange={(value) => setNumber('x2', value)} />
+            <TuningRange label="Landing pull (Y2)" value={tuning.y2} min={0} max={1} step={0.01} onChange={(value) => setNumber('y2', value)} />
+          </div>
+          <BezierCurve settings={tuning} />
+        </div>
+        <div className="keyboard-tuning-result">
+          <SelectableText as="code">{result}</SelectableText>
+          <button
+            type="button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(result);
+              setCopied(true);
+            }}
+          >{copied ? 'Copied' : 'Copy settings'}</button>
+        </div>
+      </section>
       <FormRow label="Text"><HomeframeInput type="text" placeholder="Type text" /></FormRow>
       <FormRow label="Search"><HomeframeInput type="search" placeholder="Search without zoom" /></FormRow>
       <FormRow label="Email"><HomeframeInput type="email" placeholder="name@example.com" /></FormRow>
@@ -389,6 +506,56 @@ function KeyboardPage() {
       <FormRow label="Textarea"><HomeframeTextarea rows={5} placeholder="A larger editable region" /></FormRow>
       {Array.from({ length: 8 }, (_, index) => <p key={index} className="filler">Scroll anchor {index + 1}. The focus reveal should move only this content pane.</p>)}
     </Page>
+  );
+}
+
+function TuningRange({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit = '',
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit?: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="keyboard-tuning-range">
+      <span>{label}</span>
+      <output>{step < 1 ? value.toFixed(2) : value}{unit}</output>
+      <input
+        type="range"
+        aria-label={label}
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+      />
+    </label>
+  );
+}
+
+function BezierCurve({ settings }: { settings: KeyboardTuningSettings }) {
+  const { x1, y1, x2, y2 } = settings;
+  return (
+    <figure className="keyboard-curve">
+      <svg viewBox="-6 -6 112 112" role="img" aria-label={`Transition curve cubic-bezier ${x1}, ${y1}, ${x2}, ${y2}`}>
+        <path className="keyboard-curve-grid" d="M0 0V100H100M0 75H100M0 50H100M0 25H100M25 0V100M50 0V100M75 0V100" />
+        <path className="keyboard-curve-handles" d={`M0 100 L${x1 * 100} ${(1 - y1) * 100} M100 0 L${x2 * 100} ${(1 - y2) * 100}`} />
+        <path className="keyboard-curve-line" d={`M0 100 C${x1 * 100} ${(1 - y1) * 100}, ${x2 * 100} ${(1 - y2) * 100}, 100 0`} />
+        <circle className="keyboard-curve-point" cx={x1 * 100} cy={(1 - y1) * 100} r="3" />
+        <circle className="keyboard-curve-point" cx={x2 * 100} cy={(1 - y2) * 100} r="3" />
+      </svg>
+      <figcaption>Time → <span>Progress ↑</span></figcaption>
+    </figure>
   );
 }
 

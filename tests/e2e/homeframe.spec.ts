@@ -121,8 +121,10 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
     const root = document.documentElement;
     const previousDisplayMode = root.dataset.hfDisplayMode;
     const previousKeyboardMotion = root.dataset.hfKeyboardMotion;
+    const previousTuning = root.dataset.hfKeyboardTuning;
     root.dataset.hfDisplayMode = 'standalone';
     root.dataset.hfKeyboardMotion = 'fallback';
+    delete root.dataset.hfKeyboardTuning;
     const style = getComputedStyle(element);
     const result = {
       duration: style.transitionDuration,
@@ -132,11 +134,40 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
     else root.dataset.hfDisplayMode = previousDisplayMode;
     if (previousKeyboardMotion === undefined) delete root.dataset.hfKeyboardMotion;
     else root.dataset.hfKeyboardMotion = previousKeyboardMotion;
+    if (previousTuning === undefined) delete root.dataset.hfKeyboardTuning;
+    else root.dataset.hfKeyboardTuning = previousTuning;
     return result;
   });
   expect(dockTransition.duration).toContain('0.205s');
   expect(dockTransition.easing).toContain('linear');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
+});
+
+test('keyboard page tunes the real sticky composer with copyable curve values', async ({ page }) => {
+  await navigateFromShell(page, /Keyboard/);
+  await page.getByRole('button', { name: 'System ease' }).click();
+
+  await expect(page.getByRole('slider', { name: /Duration/ })).toHaveValue('300');
+  await expect(page.getByRole('slider', { name: /Start delay/ })).toHaveValue('0');
+  await expect(page.getByRole('slider', { name: /Ease begins/ })).toHaveValue('0.42');
+  await expect(page.getByRole('slider', { name: /Ease ends/ })).toHaveValue('0.58');
+  await expect(page.locator('.keyboard-tuning-result code')).toContainText(
+    'duration: 300ms; delay: 0ms; easing: cubic-bezier(0.42, 0.00, 0.58, 1.00);',
+  );
+  await expect(page.locator('.keyboard-curve-line')).toBeVisible();
+
+  const dockTransition = await page.locator('[data-hf-dock]').evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      duration: style.transitionDuration,
+      delay: style.transitionDelay,
+      easing: style.transitionTimingFunction,
+    };
+  });
+  expect(dockTransition.duration).toContain('0.3s');
+  expect(dockTransition.delay).toContain('0s');
+  expect(dockTransition.easing).toContain('cubic-bezier(0.42, 0, 0.58, 1)');
+  await expect(page.getByPlaceholder('Persistent bottom composer')).toBeVisible();
 });
 
 test('a vertical drag beginning on a dock input scrolls content without focusing it', async ({ page }) => {
