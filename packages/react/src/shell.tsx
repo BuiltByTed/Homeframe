@@ -6,10 +6,13 @@ import {
   useContext,
   useEffect,
   useImperativeHandle,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
+  type ButtonHTMLAttributes,
   type ComponentPropsWithoutRef,
   type ElementType,
   type HTMLAttributes,
@@ -60,6 +63,15 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   headerPlacement?: AppHeaderPlacement;
   /** Replaces the default menu button shown when the sidebar is fully hidden. */
   sidebarReveal?: ReactNode;
+  /** Replaces the unstyled mobile Menu button. Pass false to render the trigger elsewhere. */
+  mobileSidebarTrigger?: ReactNode | false;
+  /** Replaces the unstyled mobile close button inside the flyout. Pass false to omit it. */
+  mobileSidebarDismiss?: ReactNode | false;
+  mobileSidebarOpen?: boolean;
+  defaultMobileSidebarOpen?: boolean;
+  onMobileSidebarOpenChange?: (open: boolean) => void;
+  /** Closes the mobile flyout after an in-sidebar link is activated. */
+  closeMobileSidebarOnNavigate?: boolean;
 }
 
 export type AppSidebarMode = 'expanded' | 'rail' | 'hidden';
@@ -69,6 +81,11 @@ export interface AppSidebarController {
   mode: AppSidebarMode;
   setMode(mode: AppSidebarMode): void;
   cycleMode(): void;
+  mobileOpen: boolean;
+  openMobile(): void;
+  closeMobile(): void;
+  toggleMobile(): void;
+  sidebarId?: string;
 }
 
 const AppSidebarContext = createContext<AppSidebarController | null>(null);
@@ -78,7 +95,56 @@ export function useAppSidebar(): AppSidebarController {
     mode: 'hidden',
     setMode: () => undefined,
     cycleMode: () => undefined,
+    mobileOpen: false,
+    openMobile: () => undefined,
+    closeMobile: () => undefined,
+    toggleMobile: () => undefined,
   };
+}
+
+export function AppSidebarTrigger({
+  children = 'Menu',
+  onClick,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const sidebar = useAppSidebar();
+  return (
+    <button
+      type="button"
+      {...props}
+      data-hf-sidebar-trigger=""
+      aria-controls={props['aria-controls'] ?? sidebar.sidebarId}
+      aria-expanded={sidebar.mobileOpen}
+      aria-label={props['aria-label'] ?? (sidebar.mobileOpen ? 'Close navigation' : 'Open navigation')}
+      onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented) sidebar.toggleMobile();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function AppSidebarDismiss({
+  children = 'Close navigation',
+  onClick,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement>) {
+  const sidebar = useAppSidebar();
+  return (
+    <button
+      type="button"
+      {...props}
+      data-hf-sidebar-dismiss=""
+      onClick={(event) => {
+        onClick?.(event);
+        if (!event.defaultPrevented) sidebar.closeMobile();
+      }}
+    >
+      {children}
+    </button>
+  );
 }
 
 export function AppSidebarLabel<T extends ElementType = 'span'>({
@@ -119,6 +185,12 @@ export function AppShell({
   sidebarStorageKey,
   headerPlacement = 'full',
   sidebarReveal,
+  mobileSidebarTrigger,
+  mobileSidebarDismiss,
+  mobileSidebarOpen,
+  defaultMobileSidebarOpen = false,
+  onMobileSidebarOpenChange,
+  closeMobileSidebarOnNavigate = true,
   children,
   ...props
 }: AppShellProps) {
@@ -127,6 +199,12 @@ export function AppShell({
   const [uncontrolledMode, setUncontrolledMode] = useState(() =>
     readStoredSidebarMode(sidebarStorageKey, defaultSidebarMode));
   const mode = sidebarMode ?? uncontrolledMode;
+  const [uncontrolledMobileOpen, setUncontrolledMobileOpen] = useState(defaultMobileSidebarOpen);
+  const mobileOpen = mobileSidebarOpen ?? uncontrolledMobileOpen;
+  const mobileLayout = useMobileSidebarLayout();
+  const generatedSidebarId = useId();
+  const sidebarId = `hf-sidebar-${generatedSidebarId.replaceAll(':', '')}`;
+  const sidebarRef = useRef<HTMLElement>(null);
   const setMode = useCallback((next: AppSidebarMode) => {
     if (sidebarMode === undefined) setUncontrolledMode(next);
     if (sidebarStorageKey) {
@@ -135,12 +213,62 @@ export function AppShell({
     }
     onSidebarModeChange?.(next);
   }, [onSidebarModeChange, sidebarMode, sidebarStorageKey]);
+  const setMobileOpen = useCallback((next: boolean) => {
+    if (mobileSidebarOpen === undefined) setUncontrolledMobileOpen(next);
+    onMobileSidebarOpenChange?.(next);
+  }, [mobileSidebarOpen, onMobileSidebarOpenChange]);
   const sidebarController = useMemo<AppSidebarController>(() => ({
     mode,
     setMode,
     cycleMode: () => setMode(mode === 'expanded' ? 'rail' : mode === 'rail' ? 'hidden' : 'expanded'),
-  }), [mode, setMode]);
+    mobileOpen,
+    openMobile: () => setMobileOpen(true),
+    closeMobile: () => setMobileOpen(false),
+    toggleMobile: () => setMobileOpen(!mobileOpen),
+    sidebarId,
+  }), [mobileOpen, mode, setMobileOpen, setMode, sidebarId]);
   const desktopLayout = sidebar != null;
+  const sidebarHidden = mobileLayout ? !mobileOpen : mode === 'hidden';
+
+  useEffect(() => {
+    if (!mobileLayout || !mobileOpen) return;
+    const sidebarElement = sidebarRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusableSelector = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const focusable = () => sidebarElement
+      ? [...sidebarElement.querySelectorAll<HTMLElement>(focusableSelector)]
+      : [];
+    requestAnimationFrame(() => (focusable()[0] ?? sidebarElement)?.focus());
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMobileOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable();
+      if (items.length === 0) {
+        event.preventDefault();
+        sidebarElement?.focus();
+        return;
+      }
+      const first = items[0]!;
+      const last = items.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [mobileLayout, mobileOpen, setMobileOpen]);
+
   const shell = createElement(
     as,
     {
@@ -149,17 +277,34 @@ export function AppShell({
       'data-hf-desktop-layout': desktopLayout || undefined,
       'data-hf-sidebar-mode': desktopLayout ? mode : undefined,
       'data-hf-header-placement': desktopLayout ? headerPlacement : undefined,
+      'data-hf-mobile-sidebar-open': desktopLayout ? String(mobileOpen) : undefined,
     },
     header == null && !desktopLayout
       ? <div />
       : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>,
     desktopLayout ? (
       <aside
+        ref={sidebarRef}
+        id={sidebarId}
         data-hf-sidebar=""
+        role={mobileLayout ? 'dialog' : undefined}
         aria-label={sidebarLabel}
-        aria-hidden={mode === 'hidden' || undefined}
-        inert={mode === 'hidden' || undefined}
+        aria-modal={mobileLayout && mobileOpen || undefined}
+        aria-hidden={sidebarHidden || undefined}
+        inert={sidebarHidden || undefined}
+        tabIndex={mobileLayout ? -1 : undefined}
+        onClick={(event) => {
+          if (mobileLayout && closeMobileSidebarOnNavigate
+            && event.target instanceof Element && event.target.closest('a[href]')) {
+            setMobileOpen(false);
+          }
+        }}
       >
+        {mobileSidebarDismiss === false ? null : (
+          <div data-hf-mobile-sidebar-dismiss="">
+            {mobileSidebarDismiss ?? <AppSidebarDismiss />}
+          </div>
+        )}
         <div data-hf-sidebar-content="">{sidebar}</div>
         {sidebarFooter == null ? null : <div data-hf-sidebar-footer="">{sidebarFooter}</div>}
       </aside>
@@ -173,8 +318,33 @@ export function AppShell({
           <button type="button" onClick={() => setMode('expanded')} aria-label="Show navigation">☰</button>
         )}</div>
       : null,
+    desktopLayout && mobileSidebarTrigger !== false
+      ? <div data-hf-mobile-sidebar-trigger="">{mobileSidebarTrigger ?? <AppSidebarTrigger />}</div>
+      : null,
+    desktopLayout && mobileLayout && mobileOpen
+      ? <div
+          data-hf-mobile-sidebar-scrim=""
+          aria-hidden="true"
+          onPointerDown={() => setMobileOpen(false)}
+        />
+      : null,
   );
   return <AppSidebarContext.Provider value={sidebarController}>{shell}</AppSidebarContext.Provider>;
+}
+
+const mobileSidebarQuery = '(max-width: 899px)';
+
+function useMobileSidebarLayout(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      if (typeof window === 'undefined') return () => undefined;
+      const query = window.matchMedia(mobileSidebarQuery);
+      query.addEventListener('change', notify);
+      return () => query.removeEventListener('change', notify);
+    },
+    () => typeof window !== 'undefined' && window.matchMedia(mobileSidebarQuery).matches,
+    () => false,
+  );
 }
 
 function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLElement | null> {

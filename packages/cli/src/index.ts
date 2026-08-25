@@ -946,7 +946,6 @@ async function doctorRenderedControls(base: URL): Promise<Diagnostic[]> {
         const result = await page.evaluate(async () => ({
           path: location.pathname,
           windowScrollY: window.scrollY,
-          rootBackground: getComputedStyle(document.documentElement).backgroundColor,
           controls: [...document.querySelectorAll<HTMLElement>('input, textarea, select, [contenteditable]:not([contenteditable="false"])')]
             .filter((element) => getComputedStyle(element).display !== 'none')
             .map((element) => ({
@@ -958,9 +957,6 @@ async function doctorRenderedControls(base: URL): Promise<Diagnostic[]> {
             : [],
         }));
         if (result.windowScrollY !== 0) diagnostics.push(error('HF_DOCUMENT_SCROLL', `${result.path} loaded with window.scrollY=${result.windowScrollY}.`, 'Keep document scrolling disabled and use AppScrollView.'));
-        if (result.rootBackground === 'rgba(0, 0, 0, 0)' || result.rootBackground === 'transparent') {
-          diagnostics.push(error('HF_ROOT_TRANSPARENT', `${result.path} has a transparent root background.`, 'Set the generated Homeframe canvas color on the document root.'));
-        }
         for (const control of result.controls) {
           if (!Number.isFinite(control.size) || control.size < 16) diagnostics.push(error('HF_DEPLOY_INPUT_ZOOM', `${result.path} ${control.selector} computes to ${control.size}px.`, 'Use a Homeframe control or enforce at least 16 CSS px editable text.'));
         }

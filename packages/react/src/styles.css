@@ -7,7 +7,6 @@
     inset: 0;
     display: grid;
     place-items: center;
-    background: var(--hf-app-background);
     transition: opacity 160ms ease;
   }
 
@@ -26,12 +25,6 @@
     max-height: calc(100% - var(--hf-safe-top) - var(--hf-effective-safe-bottom) - 16px);
     overflow: auto;
     padding: 12px;
-    border: 1px solid rgb(255 255 255 / 35%);
-    border-radius: 10px;
-    color: white;
-    background: rgb(0 0 0 / 88%);
-    box-shadow: 0 8px 30px rgb(0 0 0 / 35%);
-    font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
     user-select: text;
     -webkit-user-select: text;
   }
@@ -41,10 +34,6 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: 3px 8px;
     margin: 8px 0 0;
-  }
-
-  [data-hf-diagnostics] dt {
-    opacity: 0.65;
   }
 
   [data-hf-diagnostics] dd {
