@@ -47,6 +47,8 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   bottom?: ReactNode;
   headerSafeArea?: boolean;
   bottomKeyboard?: DockKeyboardPolicy;
+  /** Controls whether the bottom dock reserves a shell row or overlays content. */
+  bottomPlacement?: DockPlacement;
   /** Enables the responsive desktop grid when provided. */
   sidebar?: ReactNode;
   /** Pinned action/account region at the bottom of the desktop sidebar. */
@@ -110,6 +112,7 @@ export function AppShell({
   bottom,
   headerSafeArea = true,
   bottomKeyboard,
+  bottomPlacement = 'flow',
   sidebar,
   sidebarFooter,
   sidebarLabel = 'Primary navigation',
@@ -167,7 +170,7 @@ export function AppShell({
     createElement(contentAs, { 'data-hf-content': '' }, children),
     bottom == null
       ? desktopLayout ? null : <div />
-      : <ViewportDock keyboard={dockPolicy}>{bottom}</ViewportDock>,
+      : <ViewportDock keyboard={dockPolicy} placement={bottomPlacement}>{bottom}</ViewportDock>,
     desktopLayout && mode === 'hidden'
       ? <div data-hf-sidebar-reveal="">{sidebarReveal ?? (
           <button type="button" onClick={() => setMode('expanded')} aria-label="Show navigation">☰</button>
@@ -223,16 +226,21 @@ export function HomeframeWindowDragRegion<T extends ElementType = 'div'>({
   return createElement(as ?? 'div', { ...props, 'data-hf-window-drag': '' });
 }
 
+/** `overlay` is retained as the legacy combined placement/policy value. */
 export type DockKeyboardPolicy = 'avoid' | 'hide' | 'overlay' | 'manual';
+export type DockPlacement = 'flow' | 'overlay';
 
 export interface ViewportDockProps extends HTMLAttributes<HTMLElement> {
   as?: ElementType;
   keyboard?: DockKeyboardPolicy;
+  /** Layout placement is independent from keyboard behavior. */
+  placement?: DockPlacement;
 }
 
 export const ViewportDock = forwardRef<HTMLElement, ViewportDockProps>(function ViewportDock({
   as = 'div',
   keyboard = 'avoid',
+  placement = 'flow',
   ...props
 }, forwardedRef) {
   const measuredRef = useMeasuredCssVariable('--hf-bottom-height');
@@ -243,6 +251,7 @@ export const ViewportDock = forwardRef<HTMLElement, ViewportDockProps>(function 
         assignRef(forwardedRef, element);
       },
       'data-hf-dock': '',
+      'data-hf-dock-placement': placement,
       'data-keyboard-policy': keyboard,
     });
 });

@@ -93,6 +93,18 @@ export default defineConfig({
 Keep `index.html` intentionally small. Homeframe generates the viewport,
 theme-color, install, Apple, startup, manifest, and service-worker metadata.
 
+Dock placement and keyboard behavior compose independently. For a bottom search
+field or composer that overlays content while following the software keyboard:
+
+```tsx
+<ViewportDock placement="overlay" keyboard="avoid">
+  <SearchComposer />
+</ViewportDock>
+```
+
+Homeframe owns its safe areas, measurement, hit testing, and keyboard
+translation; no app-level viewport positioning rule is required.
+
 ## Package entry points
 
 - `@builtbyted/homeframe` — React shell and router APIs.

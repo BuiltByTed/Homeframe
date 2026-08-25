@@ -21,6 +21,9 @@ that runbook and `homeframe.config.ts` as required project context.
 - Put fixed bottom navigation or composers in the `AppShell` `bottom` slot or a
   `ViewportDock`/`KeyboardDock`. Do not position app-owned controls against the
   browser viewport.
+- For a bottom control that must overlay content and still follow the software
+  keyboard, use `placement="overlay" keyboard="avoid"`. Do not recreate its
+  three-edge placement, keyboard translation, or safe-area geometry in app CSS.
 - Do not use `100vh`, `100dvh`, `window.innerHeight`, direct `visualViewport`
   measurements, document scrolling, or hand-written safe-area geometry. Use
   Homeframe CSS variables and hooks.

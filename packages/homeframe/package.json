@@ -1,6 +1,6 @@
 {
   "name": "@builtbyted/homeframe",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A React framework for stable iOS Home Screen and desktop progressive web apps.",
   "type": "module",
   "sideEffects": [

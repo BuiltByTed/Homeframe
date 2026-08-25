@@ -11,6 +11,7 @@ import {
   HomeframeProvider,
   HomeframeReadinessProvider,
   SelectableText,
+  ViewportDock,
   useAppSidebar,
   useHomeframeReadiness,
   useHomeframeUpdate,
@@ -46,6 +47,15 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
     expect(container.querySelector('[data-hf-dock]')).toHaveTextContent('Bottom');
     expect(container.querySelector('[data-hf-portals]')).not.toBeNull();
+  });
+
+  it('combines overlay placement with keyboard avoidance', () => {
+    const { container } = render(
+      <ViewportDock placement="overlay" keyboard="avoid">Search</ViewportDock>,
+    );
+    const dock = container.querySelector('[data-hf-dock]');
+    expect(dock).toHaveAttribute('data-hf-dock-placement', 'overlay');
+    expect(dock).toHaveAttribute('data-keyboard-policy', 'avoid');
   });
 
   it('supports expanded, icon-rail, and hidden desktop sidebars with a pinned footer', () => {

@@ -140,6 +140,14 @@ Pass persistent bottom UI to `AppShell`'s `bottom` slot. Homeframe wraps it in a
 keyboard-aware dock using the configured policy. Use `ViewportDock` or
 `KeyboardDock` directly only for a deliberate nested shell composition.
 
+Placement and keyboard behavior are separate. A search field or composer that
+must cover content without reserving a shell row uses
+`<ViewportDock placement="overlay" keyboard="avoid">`. Homeframe then owns the
+three-edge placement, safe areas, hit testing, measurement, and keyboard
+translation together. Do not reproduce that combination with absolute/fixed app
+CSS. The legacy `keyboard="overlay"` value remains compatible, but it means
+overlay placement without keyboard avoidance.
+
 Test all transitions: closed → opening → open, switching between fields, open →
 closing → closed, rotation while focused, hardware keyboard, dictation, emoji,
 and a third-party keyboard. The header must stay fixed, the active control must

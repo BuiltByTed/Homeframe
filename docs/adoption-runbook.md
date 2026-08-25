@@ -97,6 +97,7 @@ Map existing UI as follows:
 | bottom navigation | `ViewportDock keyboard="avoid"` |
 | responsive desktop navigation | `AppShell.sidebar`, `AppShell.sidebarFooter`, and `useAppSidebar()` |
 | focused search/chat composer | `ViewportDock keyboard="avoid"` or `KeyboardDock` |
+| search/composer overlaid on content | `ViewportDock placement="overlay" keyboard="avoid"` |
 | overlay/modal portal | `HomeframePortal` |
 | editable controls | `HomeframeInput`, `HomeframeTextarea`, `HomeframeSelect`, or an audited equivalent |
 | deliberately copyable text | `SelectableText` |

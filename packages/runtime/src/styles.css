@@ -376,7 +376,10 @@
     opacity: 0;
   }
 
-  [data-hf-dock][data-keyboard-policy='overlay'] {
+  [data-hf-dock]:is(
+    [data-hf-dock-placement='overlay'],
+    [data-keyboard-policy='overlay']
+  ) {
     position: fixed;
     right: 0;
     bottom: 0;
