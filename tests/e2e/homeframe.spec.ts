@@ -123,11 +123,12 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
     const previousKeyboardMotion = root.dataset.hfKeyboardMotion;
     const previousTuning = root.dataset.hfKeyboardTuning;
     root.dataset.hfDisplayMode = 'standalone';
-    root.dataset.hfKeyboardMotion = 'fallback';
+    root.dataset.hfKeyboardMotion = 'tracking';
     delete root.dataset.hfKeyboardTuning;
     const style = getComputedStyle(element);
     const result = {
       duration: style.transitionDuration,
+      delay: style.transitionDelay,
       easing: style.transitionTimingFunction,
     };
     if (previousDisplayMode === undefined) delete root.dataset.hfDisplayMode;
@@ -138,8 +139,9 @@ test('uses 16px inputs, keeps the document fixed, and swaps bottom nav for compo
     else root.dataset.hfKeyboardTuning = previousTuning;
     return result;
   });
-  expect(dockTransition.duration).toContain('0.205s');
-  expect(dockTransition.easing).toContain('linear');
+  expect(dockTransition.duration).toContain('0.32s');
+  expect(dockTransition.delay).toContain('0s');
+  expect(dockTransition.easing).toContain('cubic-bezier(0.32, 0.27, 0, 1)');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 

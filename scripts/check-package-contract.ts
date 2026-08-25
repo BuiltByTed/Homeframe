@@ -61,7 +61,7 @@ for (const file of await walk(dist)) {
 const scaffoldManifest = JSON.parse(await readFile(resolve(root, 'packages/scaffold/template/package.json'), 'utf8')) as {
   dependencies?: Record<string, string>;
 };
-assert(scaffoldManifest.dependencies?.['@builtbyted/homeframe'] === '0.1.1', 'Scaffold must pin the current @builtbyted/homeframe release.');
+assert(scaffoldManifest.dependencies?.['@builtbyted/homeframe'] === '0.1.2', 'Scaffold must pin the current @builtbyted/homeframe release.');
 assert(Object.keys(scaffoldManifest.dependencies ?? {}).filter((name) => name.startsWith('@builtbyted/')).length === 1,
   'Scaffold must depend on one public BuiltByTed package.');
 

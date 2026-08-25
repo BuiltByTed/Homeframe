@@ -86,16 +86,16 @@ interface KeyboardTuningSettings {
 }
 
 const defaultKeyboardTuning: KeyboardTuningSettings = {
-  duration: 205,
+  duration: 320,
   delay: 0,
-  x1: 0,
-  y1: 0,
-  x2: 1,
+  x1: 0.32,
+  y1: 0.27,
+  x2: 0,
   y2: 1,
 };
 
 const keyboardCurvePresets: Array<{ label: string; settings: KeyboardTuningSettings }> = [
-  { label: 'Current fallback', settings: defaultKeyboardTuning },
+  { label: 'Homeframe default', settings: defaultKeyboardTuning },
   {
     label: 'System ease',
     settings: { duration: 300, delay: 0, x1: 0.42, y1: 0, x2: 0.58, y2: 1 },

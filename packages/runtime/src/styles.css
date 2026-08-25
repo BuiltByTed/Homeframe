@@ -19,8 +19,9 @@
     --hf-effective-safe-bottom: env(safe-area-inset-bottom, 0px);
     --hf-keyboard-height: 0px;
     --hf-dock-keyboard-offset: 0px;
-    --hf-dock-keyboard-transition-duration: 205ms;
-    --hf-dock-keyboard-transition-easing: linear;
+    --hf-dock-keyboard-transition-duration: 320ms;
+    --hf-dock-keyboard-transition-delay: 0ms;
+    --hf-dock-keyboard-transition-easing: cubic-bezier(.32, .27, 0, 1);
     --hf-keyboard-open: 0;
     --hf-input-min-font-size: 16px;
     --hf-header-height: 0px;
@@ -362,18 +363,10 @@
     [data-hf-display-mode='minimal-ui']
   ) [data-hf-dock][data-keyboard-policy='avoid'] {
     transform: translate3d(0, calc(-1 * var(--hf-dock-keyboard-offset)), 0);
-    transition: none;
-    will-change: transform;
-  }
-
-  :root[data-hf-keyboard-motion='fallback']:is(
-    [data-hf-display-mode='standalone'],
-    [data-hf-display-mode='fullscreen'],
-    [data-hf-display-mode='minimal-ui']
-  ) [data-hf-dock][data-keyboard-policy='avoid'] {
     transition:
-      transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing),
-      padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing);
+      transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay),
+      padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay);
+    will-change: transform;
   }
 
   :root:not([data-hf-keyboard='closed']) [data-hf-dock][data-keyboard-policy='hide'] {
