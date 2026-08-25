@@ -18,12 +18,15 @@
     --hf-effective-safe-bottom: env(safe-area-inset-bottom, 0px);
     --hf-keyboard-height: 0px;
     --hf-dock-keyboard-offset: 0px;
-    --hf-dock-keyboard-transition-duration: 205ms;
-    --hf-dock-keyboard-transition-easing: linear;
+    --hf-dock-keyboard-transition-duration: 320ms;
+    --hf-dock-keyboard-transition-delay: 0ms;
+    --hf-dock-keyboard-transition-easing: cubic-bezier(.32, .27, 0, 1);
     --hf-keyboard-open: 0;
     --hf-input-min-font-size: 16px;
     --hf-header-height: 0px;
     --hf-bottom-height: 0px;
+    --hf-top-attachment-height: 0px;
+    --hf-bottom-attachment-height: 0px;
     --hf-titlebar-x: env(titlebar-area-x, 0px);
     --hf-titlebar-y: env(titlebar-area-y, 0px);
     --hf-titlebar-width: env(titlebar-area-width, 100vw);
@@ -215,6 +218,16 @@
       grid-area: bottom;
     }
 
+    [data-hf-shell][data-hf-desktop-layout]
+      > [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'] {
+      left: var(--hf-active-sidebar-width);
+    }
+
+    [data-hf-shell][data-hf-desktop-layout][data-hf-header-placement='content']
+      > [data-hf-viewport-attachment][data-hf-attachment-anchor='header'] {
+      left: var(--hf-active-sidebar-width);
+    }
+
     [data-hf-shell][data-hf-desktop-layout][data-hf-sidebar-mode='hidden']:not([data-hf-header-placement='sidebar']) > [data-hf-header] {
       padding-left: calc(var(--hf-safe-left) + 64px);
     }
@@ -360,6 +373,8 @@
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y pinch-zoom;
     scrollbar-gutter: stable;
+    scroll-padding-top: var(--hf-top-attachment-height);
+    scroll-padding-bottom: var(--hf-bottom-attachment-height);
   }
 
   :root[data-hf-keyboard-target='content'] [data-hf-scroll-view]::after {
@@ -377,7 +392,33 @@
     padding-left: var(--hf-safe-left);
   }
 
-  [data-hf-dock][data-keyboard-policy='hide'] {
+  [data-hf-viewport-attachment] {
+    position: absolute;
+    z-index: 19;
+    right: 0;
+    left: 0;
+    min-width: 0;
+    padding-right: var(--hf-safe-right);
+    padding-left: var(--hf-safe-left);
+  }
+
+  [data-hf-viewport-attachment][data-hf-attachment-anchor='header'] {
+    top: var(--hf-header-height);
+  }
+
+  [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'] {
+    bottom: var(--hf-bottom-height);
+  }
+
+  [data-hf-shell][data-hf-has-dock='false']
+    > [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'] {
+    padding-bottom: var(--hf-effective-safe-bottom);
+  }
+
+  :is(
+    [data-hf-dock],
+    [data-hf-viewport-attachment][data-hf-attachment-anchor='dock']
+  )[data-keyboard-policy='hide'] {
     transition: opacity 120ms ease;
   }
 
@@ -385,30 +426,31 @@
     [data-hf-display-mode='standalone'],
     [data-hf-display-mode='fullscreen'],
     [data-hf-display-mode='minimal-ui']
-  ) [data-hf-dock][data-keyboard-policy='avoid'] {
+  ) :is(
+    [data-hf-dock],
+    [data-hf-viewport-attachment][data-hf-attachment-anchor='dock']
+  )[data-keyboard-policy='avoid'] {
     transform: translate3d(0, calc(-1 * var(--hf-dock-keyboard-offset)), 0);
-    transition: none;
+    transition:
+      transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay),
+      padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay);
     will-change: transform;
   }
 
-  :root[data-hf-keyboard-motion='fallback']:is(
-    [data-hf-display-mode='standalone'],
-    [data-hf-display-mode='fullscreen'],
-    [data-hf-display-mode='minimal-ui']
-  ) [data-hf-dock][data-keyboard-policy='avoid'] {
-    transition:
-      transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing),
-      padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing);
-  }
-
-  :root:not([data-hf-keyboard='closed']) [data-hf-dock][data-keyboard-policy='hide'] {
+  :root:not([data-hf-keyboard='closed']) :is(
+    [data-hf-dock],
+    [data-hf-viewport-attachment][data-hf-attachment-anchor='dock']
+  )[data-keyboard-policy='hide'] {
     visibility: hidden;
     height: 0;
     overflow: hidden;
     opacity: 0;
   }
 
-  [data-hf-dock][data-keyboard-policy='overlay'] {
+  [data-hf-dock]:is(
+    [data-hf-dock-placement='overlay'],
+    [data-keyboard-policy='overlay']
+  ) {
     position: fixed;
     right: 0;
     bottom: 0;
@@ -493,8 +535,8 @@
 
   [data-hf-edge-guard] {
     position: absolute;
-    top: 0;
-    bottom: calc(var(--hf-bottom-height) + var(--hf-dock-keyboard-offset));
+    top: calc(var(--hf-header-height) + var(--hf-top-attachment-height));
+    bottom: calc(var(--hf-bottom-height) + var(--hf-bottom-attachment-height) + var(--hf-dock-keyboard-offset));
     width: var(--hf-edge-width, 24px);
     pointer-events: auto;
     touch-action: none;

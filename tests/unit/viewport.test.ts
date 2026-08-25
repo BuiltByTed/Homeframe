@@ -447,6 +447,30 @@ describe('ViewportController', () => {
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
+  it('treats a bottom viewport attachment as a keyboard-aware dock target', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const attachment = document.createElement('div');
+    attachment.dataset.hfViewportAttachment = '';
+    attachment.dataset.hfAttachmentAnchor = 'dock';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    attachment.append(input);
+    document.body.append(attachment);
+    controller.start();
+
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(document.documentElement.dataset.hfKeyboardTarget).toBe('dock');
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+  });
+
   it('tracks intermediate keyboard geometry directly instead of applying a second easing curve', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });

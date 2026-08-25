@@ -11,6 +11,8 @@ import {
   HomeframeProvider,
   HomeframeReadinessProvider,
   SelectableText,
+  ViewportDock,
+  ViewportAttachment,
   useAppSidebar,
   useHomeframeReadiness,
   useHomeframeUpdate,
@@ -46,6 +48,61 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
     expect(container.querySelector('[data-hf-dock]')).toHaveTextContent('Bottom');
     expect(container.querySelector('[data-hf-portals]')).not.toBeNull();
+  });
+
+  it('combines overlay placement with keyboard avoidance', () => {
+    const { container } = render(
+      <ViewportDock placement="overlay" keyboard="avoid">Search</ViewportDock>,
+    );
+    const dock = container.querySelector('[data-hf-dock]');
+    expect(dock).toHaveAttribute('data-hf-dock-placement', 'overlay');
+    expect(dock).toHaveAttribute('data-keyboard-policy', 'avoid');
+  });
+
+  it('measures viewport attachments and exposes AppShell convenience slots', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell
+            header={<div>Header</div>}
+            headerAttachment={<div>Video</div>}
+            bottom={<div>Navigation</div>}
+            bottomAttachment={<div>Search</div>}
+            bottomAttachmentKeyboard="avoid"
+          >
+            <AppScrollView>Content</AppScrollView>
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    const attachments = container.querySelectorAll('[data-hf-viewport-attachment]');
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'true');
+    expect(attachments).toHaveLength(2);
+    expect(attachments[0]).toHaveAttribute('data-hf-attachment-anchor', 'header');
+    expect(attachments[0]).toHaveAttribute('data-keyboard-policy', 'manual');
+    expect(attachments[1]).toHaveAttribute('data-hf-attachment-anchor', 'dock');
+    expect(attachments[1]).toHaveAttribute('data-keyboard-policy', 'avoid');
+  });
+
+  it('marks when a bottom attachment must own the safe bottom', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell bottomAttachment={<div>Search</div>}>
+            <AppScrollView>Content</AppScrollView>
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'false');
+    expect(container.querySelector('[data-hf-dock]')).toBeNull();
+  });
+
+  it('allows direct viewport attachment composition', () => {
+    const { container } = render(
+      <ViewportAttachment anchor="dock" keyboard="hide">Controls</ViewportAttachment>,
+    );
+    expect(container.firstElementChild).toHaveAttribute('data-keyboard-policy', 'hide');
   });
 
   it('supports expanded, icon-rail, and hidden desktop sidebars with a pinned footer', () => {

@@ -64,6 +64,36 @@ beforeEach(() => {
 });
 
 describe('HomeframeServiceWorkerClient multi-client coordination', () => {
+  it('activates a launch-time waiting worker before the first app presentation', async () => {
+    document.documentElement.dataset.hfReady = 'false';
+    const worker = new FakeWorker();
+    const registration = new FakeRegistration(worker);
+    const container = new FakeServiceWorkerContainer(worker, registration);
+    Object.defineProperty(navigator, 'serviceWorker', { value: container, configurable: true });
+    const client = new HomeframeServiceWorkerClient({ scope: '/launch-handoff/' });
+
+    expect(client.shouldHoldInitialPresentation()).toBe(true);
+    await client.start();
+    expect(worker.skipWaitingMessages).toBe(1);
+    expect(client.getSnapshot().state).toBe('activating');
+    expect(client.shouldHoldInitialPresentation()).toBe(true);
+    client.stop();
+  });
+
+  it('releases initial presentation when the launch check is current', async () => {
+    const active = new FakeWorker('activated');
+    const registration = new FakeRegistration(active);
+    registration.waiting = null;
+    const container = new FakeServiceWorkerContainer(active, registration);
+    Object.defineProperty(navigator, 'serviceWorker', { value: container, configurable: true });
+    const client = new HomeframeServiceWorkerClient({ scope: '/launch-current/' });
+
+    await client.start();
+    expect(client.getSnapshot().state).toBe('current');
+    expect(client.shouldHoldInitialPresentation()).toBe(false);
+    client.stop();
+  });
+
   it('follows a replacement worker when an overlapping update makes one candidate redundant', async () => {
     const active = new FakeWorker('activated');
     const registration = new FakeRegistration(active);

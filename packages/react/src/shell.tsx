@@ -47,9 +47,17 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   as?: ElementType;
   contentAs?: ElementType;
   header?: ReactNode;
+  /** Viewport-attached content below the measured header; route content scrolls behind it. */
+  headerAttachment?: ReactNode;
   bottom?: ReactNode;
+  /** Viewport-attached content above the measured bottom dock; route content scrolls behind it. */
+  bottomAttachment?: ReactNode;
+  /** Keyboard behavior for the bottom attachment. */
+  bottomAttachmentKeyboard?: DockKeyboardPolicy;
   headerSafeArea?: boolean;
   bottomKeyboard?: DockKeyboardPolicy;
+  /** Controls whether the bottom dock reserves a shell row or overlays content. */
+  bottomPlacement?: DockPlacement;
   /** Enables the responsive desktop grid when provided. */
   sidebar?: ReactNode;
   /** Pinned action/account region at the bottom of the desktop sidebar. */
@@ -173,9 +181,13 @@ export function AppShell({
   as = 'div',
   contentAs = 'main',
   header,
+  headerAttachment,
   bottom,
+  bottomAttachment,
+  bottomAttachmentKeyboard = 'avoid',
   headerSafeArea = true,
   bottomKeyboard,
+  bottomPlacement = 'flow',
   sidebar,
   sidebarFooter,
   sidebarLabel = 'Primary navigation',
@@ -278,10 +290,14 @@ export function AppShell({
       'data-hf-sidebar-mode': desktopLayout ? mode : undefined,
       'data-hf-header-placement': desktopLayout ? headerPlacement : undefined,
       'data-hf-mobile-sidebar-open': desktopLayout ? String(mobileOpen) : undefined,
+      'data-hf-has-dock': bottom == null ? 'false' : 'true',
     },
     header == null && !desktopLayout
       ? <div />
       : <AppHeader safeArea={headerSafeArea}>{header}</AppHeader>,
+    headerAttachment == null
+      ? null
+      : <ViewportAttachment anchor="header">{headerAttachment}</ViewportAttachment>,
     desktopLayout ? (
       <aside
         ref={sidebarRef}
@@ -310,9 +326,14 @@ export function AppShell({
       </aside>
     ) : null,
     createElement(contentAs, { 'data-hf-content': '' }, children),
+    bottomAttachment == null
+      ? null
+      : <ViewportAttachment anchor="dock" keyboard={bottomAttachmentKeyboard}>
+          {bottomAttachment}
+        </ViewportAttachment>,
     bottom == null
       ? desktopLayout ? null : <div />
-      : <ViewportDock keyboard={dockPolicy}>{bottom}</ViewportDock>,
+      : <ViewportDock keyboard={dockPolicy} placement={bottomPlacement}>{bottom}</ViewportDock>,
     desktopLayout && mode === 'hidden'
       ? <div data-hf-sidebar-reveal="">{sidebarReveal ?? (
           <button type="button" onClick={() => setMode('expanded')} aria-label="Show navigation">☰</button>
@@ -356,7 +377,10 @@ function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLElement 
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      getHomeframeRootStyle().setProperty(variable, '0px');
+    };
   }, [variable]);
   return ref;
 }
@@ -393,16 +417,21 @@ export function HomeframeWindowDragRegion<T extends ElementType = 'div'>({
   return createElement(as ?? 'div', { ...props, 'data-hf-window-drag': '' });
 }
 
+/** `overlay` is retained as the legacy combined placement/policy value. */
 export type DockKeyboardPolicy = 'avoid' | 'hide' | 'overlay' | 'manual';
+export type DockPlacement = 'flow' | 'overlay';
 
 export interface ViewportDockProps extends HTMLAttributes<HTMLElement> {
   as?: ElementType;
   keyboard?: DockKeyboardPolicy;
+  /** Layout placement is independent from keyboard behavior. */
+  placement?: DockPlacement;
 }
 
 export const ViewportDock = forwardRef<HTMLElement, ViewportDockProps>(function ViewportDock({
   as = 'div',
   keyboard = 'avoid',
+  placement = 'flow',
   ...props
 }, forwardedRef) {
   const measuredRef = useMeasuredCssVariable('--hf-bottom-height');
@@ -413,11 +442,50 @@ export const ViewportDock = forwardRef<HTMLElement, ViewportDockProps>(function 
         assignRef(forwardedRef, element);
       },
       'data-hf-dock': '',
+      'data-hf-dock-placement': placement,
       'data-keyboard-policy': keyboard,
     });
 });
 
 export const KeyboardDock = ViewportDock;
+
+export type ViewportAttachmentAnchor = 'header' | 'dock';
+
+export interface ViewportAttachmentProps extends HTMLAttributes<HTMLElement> {
+  as?: ElementType;
+  /** The measured shell region this overlay follows. */
+  anchor: ViewportAttachmentAnchor;
+  /** Bottom attachments normally avoid the keyboard; header attachments remain stationary. */
+  keyboard?: DockKeyboardPolicy;
+}
+
+/**
+ * A measured, viewport-bound region that overlays route content immediately
+ * below the header or above the bottom dock. Put one attachment at each edge
+ * and compose multiple app-owned controls inside it as a stack.
+ */
+export const ViewportAttachment = forwardRef<HTMLElement, ViewportAttachmentProps>(
+  function ViewportAttachment({
+    as = 'div',
+    anchor,
+    keyboard = anchor === 'dock' ? 'avoid' : 'manual',
+    ...props
+  }, forwardedRef) {
+    const measuredRef = useMeasuredCssVariable(
+      anchor === 'header' ? '--hf-top-attachment-height' : '--hf-bottom-attachment-height',
+    );
+    return createElement(as, {
+      ...props,
+      ref: (element: HTMLElement | null) => {
+        measuredRef.current = element;
+        assignRef(forwardedRef, element);
+      },
+      'data-hf-viewport-attachment': '',
+      'data-hf-attachment-anchor': anchor,
+      'data-keyboard-policy': keyboard,
+    });
+  },
+);
 
 export interface AppScrollViewHandle {
   element: HTMLElement | null;

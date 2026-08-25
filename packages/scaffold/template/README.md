@@ -22,6 +22,10 @@ and [docs/HOMEFRAME_RUNBOOK.md](./docs/HOMEFRAME_RUNBOOK.md).
 - `npm run doctor` audits the source and built output against Homeframe rules.
 - `npm run check` runs the release-oriented build and doctor checks.
 
+`doctor --strict` fails on framework-boundary warnings, including app-authored
+fixed/sticky viewport UI. Use Homeframe's measured shell primitives instead of
+waiving the diagnostic.
+
 ## Project map
 
 - `homeframe.config.ts` owns app identity, generated browser metadata, viewport

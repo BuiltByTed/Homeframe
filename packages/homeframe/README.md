@@ -93,6 +93,40 @@ export default defineConfig({
 Keep `index.html` intentionally small. Homeframe generates the viewport,
 theme-color, install, Apple, startup, manifest, and service-worker metadata.
 
+Dock placement and keyboard behavior compose independently. For a bottom search
+field or composer that overlays content while following the software keyboard:
+
+```tsx
+<ViewportDock placement="overlay" keyboard="avoid">
+  <SearchComposer />
+</ViewportDock>
+```
+
+Homeframe owns its safe areas, measurement, hit testing, and keyboard
+translation; no app-level viewport positioning rule is required.
+
+For a player or tool row attached below the header, or a search row stacked
+above bottom navigation while content scrolls behind it, use the measured shell
+slots:
+
+```tsx
+<AppShell
+  header={<Header />}
+  headerAttachment={<VideoPlayer />}
+  bottom={<BottomNavigation />}
+  bottomAttachment={<SearchComposer />}
+  bottomAttachmentKeyboard="avoid"
+>
+  <AppScrollView>{children}</AppScrollView>
+</AppShell>
+```
+
+`ViewportAttachment` is also exported for direct composition. Homeframe owns
+its position and size but intentionally supplies no colors, fonts, borders, or
+shadows. `homeframe doctor --strict` reports app-authored fixed/sticky regions
+as `HF_UNTRACKED_VIEWPORT_UI`; the ESLint plugin catches inline versions while
+editing when enabled in the application's ESLint configuration.
+
 ## Package entry points
 
 - `@builtbyted/homeframe` — React shell and router APIs.

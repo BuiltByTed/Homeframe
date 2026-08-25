@@ -124,10 +124,10 @@ const noDocumentScroll = {
 const noUntrackedFixedPosition = {
   meta: {
     type: 'problem',
-    docs: { description: 'Use Homeframe header, dock, or portal primitives for viewport-bound UI.' },
+    docs: { description: 'Use Homeframe measured primitives for viewport-bound UI.' },
     schema: [],
     messages: {
-      fixedPosition: 'Inline position: {{position}} binds to the browser viewport. Use AppHeader, ViewportDock, or HomeframePortal.',
+      fixedPosition: 'Inline position: {{position}} bypasses Homeframe geometry. Use AppHeader, ViewportDock, ViewportAttachment, or HomeframePortal.',
     },
   },
   create(context: RuleContext) {

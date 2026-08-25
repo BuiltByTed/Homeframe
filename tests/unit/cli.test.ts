@@ -216,6 +216,30 @@ describe('Homeframe source doctor', () => {
       }),
     ]);
   });
+
+  it('surfaces app-owned fixed and sticky regions for strict build compliance', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      .floating-video { position: sticky; top: 0; }
+      .search-bar { position: fixed; inset: auto 0 0; }
+    `);
+    await writeFixture(root, 'src/App.tsx', `
+      export function App() {
+        return <div style={{ position: 'fixed' }}>Untracked</div>;
+      }
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_UNTRACKED_VIEWPORT_UI')).toHaveLength(3);
+    expect(diagnostics.filter((item) => item.code === 'HF_UNTRACKED_VIEWPORT_UI')).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ file: 'src/styles.css', message: expect.stringContaining('sticky') }),
+        expect.objectContaining({ file: 'src/styles.css', message: expect.stringContaining('fixed') }),
+        expect.objectContaining({ file: 'src/App.tsx', message: expect.stringContaining('fixed') }),
+      ]),
+    );
+  });
 });
 
 async function fixtureDirectory(): Promise<string> {

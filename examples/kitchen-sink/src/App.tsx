@@ -86,16 +86,16 @@ interface KeyboardTuningSettings {
 }
 
 const defaultKeyboardTuning: KeyboardTuningSettings = {
-  duration: 205,
+  duration: 320,
   delay: 0,
-  x1: 0,
-  y1: 0,
-  x2: 1,
+  x1: 0.32,
+  y1: 0.27,
+  x2: 0,
   y2: 1,
 };
 
 const keyboardCurvePresets: Array<{ label: string; settings: KeyboardTuningSettings }> = [
-  { label: 'Current fallback', settings: defaultKeyboardTuning },
+  { label: 'Homeframe default', settings: defaultKeyboardTuning },
   {
     label: 'System ease',
     settings: { duration: 300, delay: 0, x1: 0.42, y1: 0, x2: 0.58, y2: 1 },
@@ -222,7 +222,10 @@ function ApplicationShell() {
           />
         )}
         sidebarStorageKey="homeframe-demo:sidebar-mode"
-        bottom={<ShellBottom routeId={route.match?.route.id} />}
+        bottom={<BottomNav />}
+        bottomKeyboard={route.match?.route.id === 'keyboard' ? 'hide' : 'avoid'}
+        bottomAttachment={route.match?.route.id === 'keyboard' ? <KeyboardComposer /> : null}
+        bottomAttachmentKeyboard="avoid"
       >
         <HomeframeOfflineBoundary offline={<OfflinePage />}>
           <AppScrollView
@@ -253,7 +256,7 @@ function Header() {
       <NoCallout as="div" className="brand-mark">H</NoCallout>
       <div className="header-title">
         <strong>Homeframe</strong>
-        <span>{display} · keyboard {keyboard.phase}</span>
+        <span>v{__HOMEFRAME_VERSION__} · {display} · keyboard {keyboard.phase}</span>
       </div>
       <Link to={appPath('/settings')} className="icon-button" aria-label="Settings">⚙</Link>
     </header>
@@ -341,9 +344,8 @@ function DesktopSidebarFooter({
   );
 }
 
-function ShellBottom({ routeId }: { routeId: string | undefined }) {
+function KeyboardComposer() {
   const [draft, setDraft] = useStateCheckpoint({ key: 'keyboard-draft', initialValue: '' });
-  if (routeId !== 'keyboard') return <BottomNav />;
   return (
     <div className="composer">
       <HomeframeInput aria-label="Persistent composer" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Persistent bottom composer" />

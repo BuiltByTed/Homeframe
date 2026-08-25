@@ -93,16 +93,25 @@ Map existing UI as follows:
 | Existing responsibility | Homeframe owner |
 | --- | --- |
 | fixed top application bar | `AppHeader` or `AppShell.header` |
+| video/tools attached below the header | `AppShell.headerAttachment` or `ViewportAttachment anchor="header"` |
 | route/page scrolling | `AppScrollView` |
 | bottom navigation | `ViewportDock keyboard="avoid"` |
 | responsive desktop navigation | `AppShell.sidebar`, `AppShell.sidebarFooter`, and `useAppSidebar()` |
 | focused search/chat composer | `ViewportDock keyboard="avoid"` or `KeyboardDock` |
+| search/composer overlaid on content | `ViewportDock placement="overlay" keyboard="avoid"` |
+| search/composer above bottom navigation | `AppShell.bottomAttachment` or `ViewportAttachment anchor="dock" keyboard="avoid"` |
 | overlay/modal portal | `HomeframePortal` |
 | editable controls | `HomeframeInput`, `HomeframeTextarea`, `HomeframeSelect`, or an audited equivalent |
 | deliberately copyable text | `SelectableText` |
 | long-press-sensitive control | `NoCallout` |
 
 Do not put the entire shell inside a page scroller. The invariant is one stationary document, one explicit scrolling content region, and controls positioned from Homeframe's visual viewport variables.
+
+Use one `ViewportAttachment` per edge and compose multiple app-owned rows inside
+it. Homeframe supplies only measurement, placement, safe-area integration,
+keyboard targeting, and edge-navigation exclusion; product CSS supplies the
+visual design. App-authored `position: fixed` and `position: sticky` are reported
+as `HF_UNTRACKED_VIEWPORT_UI` by `homeframe doctor --strict`.
 
 Custom CSS may use:
 

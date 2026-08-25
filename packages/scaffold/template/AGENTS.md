@@ -21,6 +21,13 @@ that runbook and `homeframe.config.ts` as required project context.
 - Put fixed bottom navigation or composers in the `AppShell` `bottom` slot or a
   `ViewportDock`/`KeyboardDock`. Do not position app-owned controls against the
   browser viewport.
+- Put content that must remain attached below the header or above the bottom
+  dock in `AppShell.headerAttachment`/`bottomAttachment`, or use one measured
+  `ViewportAttachment` per edge. Compose multiple controls inside that one
+  attachment. Do not use app-authored `position: fixed` or `position: sticky`.
+- For a bottom control that must overlay content and still follow the software
+  keyboard, use `placement="overlay" keyboard="avoid"`. Do not recreate its
+  three-edge placement, keyboard translation, or safe-area geometry in app CSS.
 - Do not use `100vh`, `100dvh`, `window.innerHeight`, direct `visualViewport`
   measurements, document scrolling, or hand-written safe-area geometry. Use
   Homeframe CSS variables and hooks.
@@ -65,3 +72,5 @@ that runbook and `homeframe.config.ts` as required project context.
 - Back/Forward, deep links, reload, offline launch, and update activation preserve
   the expected route and state.
 - No duplicate framework ownership was introduced.
+- `homeframe doctor --strict` reports no `HF_UNTRACKED_VIEWPORT_UI` warnings;
+  app-owned fixed/sticky CSS is a build failure, not an accepted workaround.
