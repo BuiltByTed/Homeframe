@@ -307,6 +307,10 @@
     content: '';
   }
 
+  :root[data-hf-keyboard-occlusion='transparent'] [data-hf-shell]::after {
+    display: none;
+  }
+
   [data-hf-header] {
     position: relative;
     z-index: 20;

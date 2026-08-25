@@ -108,6 +108,8 @@ export default defineHomeframe({
     selection: 'controls-only',
     snapshot: 'brand',
     bottomDock: 'avoid',
+    // Optional: let route content remain visible behind the native keyboard.
+    keyboardOcclusion: 'transparent',
   },
   router: { historyMode: 'auto' },
   nudges: {
@@ -125,6 +127,8 @@ export default defineHomeframe({
 ```
 
 Set `app.colorScheme` to `system` (the default), `light`, or `dark`. System mode emits adaptive browser metadata, critical canvas colors, and light/dark Apple startup images. A forced scheme locks the document canvas and generated assets; Homeframe separately avoids iOS's OS-owned light swipe fallback by selecting managed edge navigation in installed iOS/iPadOS web apps.
+
+`viewport.keyboardOcclusion` defaults to `opaque`, which paints the configured dock surface beneath the native keyboard while it animates. Set it to `transparent` when the app should remain visually continuous behind the keyboard; Homeframe still measures the keyboard and moves only attachments whose keyboard policy is `avoid`.
 
 The router's default `historyMode: 'auto'` uses ordinary History API entries in Safari, Chrome, and desktop PWAs. Installed iOS/iPadOS web apps use a URL-synchronized managed stack plus left-edge Back and right-edge Forward gestures because WebKit's native snapshot view can fall back to an unpaintable system-white surface. Use `historyMode: 'browser'` to opt back into the native installed gesture, or `historyMode: 'managed'` to exercise the fallback in tests.
 
