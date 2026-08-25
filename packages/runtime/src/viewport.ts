@@ -45,6 +45,8 @@ export interface ViewportRuntimeOptions {
   settleDelaysMs?: number[];
   /** Hold the document and internal scroller steady after viewport activity. */
   keyboardStabilizationMs?: number;
+  /** Whether Homeframe paints an app-colored layer beneath the software keyboard. */
+  keyboardOcclusion?: 'opaque' | 'transparent';
   /** Scroll the active AppScrollView to top when app-owned header chrome is tapped. */
   topTapToTop?: boolean;
 }
@@ -168,6 +170,7 @@ export class ViewportController {
       strictInputZoom: options.strictInputZoom ?? false,
       settleDelaysMs: options.settleDelaysMs ?? [50, 150, 320],
       keyboardStabilizationMs: options.keyboardStabilizationMs ?? 220,
+      keyboardOcclusion: options.keyboardOcclusion ?? 'opaque',
       topTapToTop: options.topTapToTop ?? true,
     };
   }
@@ -187,6 +190,7 @@ export class ViewportController {
 
     this.abortController = new AbortController();
     const { signal } = this.abortController;
+    document.documentElement.dataset.hfKeyboardOcclusion = this.options.keyboardOcclusion;
     this.createSafeAreaProbe();
 
     const schedule = () => this.scheduleMeasure();
@@ -440,6 +444,7 @@ export class ViewportController {
     this.setKeyboardTarget('none');
     this.keyboardMotion = 'idle';
     document.documentElement.dataset.hfKeyboardMotion = this.keyboardMotion;
+    delete document.documentElement.dataset.hfKeyboardOcclusion;
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
     this.installedFrameInset = 0;

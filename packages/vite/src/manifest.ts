@@ -113,6 +113,7 @@ export function validateConfig(config: HomeframeConfig): void {
   if (viewport?.inputZoomMinimumPx !== undefined && (!Number.isFinite(viewport.inputZoomMinimumPx) || viewport.inputZoomMinimumPx < 16)) errors.push('viewport.inputZoomMinimumPx must be at least 16 CSS px.');
   if (viewport?.settleDelaysMs?.some((delay) => !Number.isFinite(delay) || delay < 0 || delay > 5_000)) errors.push('viewport.settleDelaysMs must contain bounded non-negative delays up to 5000ms.');
   if (viewport?.keyboardStabilizationMs !== undefined && (!Number.isFinite(viewport.keyboardStabilizationMs) || viewport.keyboardStabilizationMs < 0 || viewport.keyboardStabilizationMs > 5_000)) errors.push('viewport.keyboardStabilizationMs must be between zero and 5000ms.');
+  if (viewport?.keyboardOcclusion !== undefined && !['opaque', 'transparent'].includes(viewport.keyboardOcclusion)) errors.push('viewport.keyboardOcclusion must be opaque or transparent.');
   if (viewport?.topTapToTop !== undefined && typeof viewport.topTapToTop !== 'boolean') errors.push('viewport.topTapToTop must be a boolean.');
   for (const [kind, policy] of Object.entries(config.nudges ?? {})) {
     if (!policy || typeof policy !== 'object' || kind === 'storageKeyPrefix' || kind === 'policyVersion') continue;

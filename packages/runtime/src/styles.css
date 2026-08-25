@@ -334,6 +334,10 @@
     content: '';
   }
 
+  :root[data-hf-keyboard-occlusion='transparent'] [data-hf-shell]::after {
+    display: none;
+  }
+
   [data-hf-header] {
     position: relative;
     z-index: 20;
@@ -413,6 +417,18 @@
   [data-hf-shell][data-hf-has-dock='false']
     > [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'] {
     padding-bottom: var(--hf-effective-safe-bottom);
+  }
+
+  /*
+   * A manual dock deliberately remains in the layout viewport so the
+   * software keyboard can cover it. Its independently avoiding attachment
+   * must stop reserving that covered row before following the keyboard;
+   * otherwise the attachment floats one full dock height above the keyboard.
+   */
+  :root[data-hf-keyboard-target='dock']:not([data-hf-keyboard='closed'])
+    [data-hf-shell][data-hf-bottom-keyboard-policy='manual']
+    > [data-hf-viewport-attachment][data-hf-attachment-anchor='dock'][data-keyboard-policy='avoid'] {
+    bottom: 0;
   }
 
   :is(
