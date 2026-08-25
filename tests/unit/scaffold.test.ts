@@ -40,8 +40,11 @@ describe('scaffold-homeframe-app', () => {
       name: string;
       dependencies: Record<string, string>;
     };
+    const homeframePackageJson = JSON.parse(
+      await readFile(join(import.meta.dirname, '../../packages/homeframe/package.json'), 'utf8'),
+    ) as { version: string };
     expect(packageJson.name).toBe('@builtbyted/my-app');
-    expect(packageJson.dependencies['@builtbyted/homeframe']).toBe('0.1.6');
+    expect(packageJson.dependencies['@builtbyted/homeframe']).toBe(homeframePackageJson.version);
     expect(await readFile(join(target, 'index.html'), 'utf8')).toContain('<title>Ted &amp; Co</title>');
     expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).toContain('name: "Ted & Co"');
     const agentContract = await readFile(join(target, 'AGENTS.md'), 'utf8');
