@@ -163,6 +163,10 @@ content scrolls behind it, use a measured viewport attachment:
 </AppShell>
 ```
 
+To let the software keyboard cover persistent navigation while only the
+attachment follows it, use `bottomKeyboard="manual"` together with
+`bottomAttachmentKeyboard="avoid"`.
+
 The direct form is `<ViewportAttachment anchor="header">` or
 `<ViewportAttachment anchor="dock" keyboard="avoid">`. Use at most one per
 edge and put any multi-row UI inside it. Homeframe measures the stack, positions
