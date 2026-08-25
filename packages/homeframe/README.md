@@ -121,6 +121,11 @@ slots:
 </AppShell>
 ```
 
+If the keyboard should cover persistent bottom navigation while only the
+attachment follows it, set `bottomKeyboard="manual"` and keep
+`bottomAttachmentKeyboard="avoid"`. Homeframe removes the covered dock row
+from the attachment anchor while the attachment owns keyboard focus.
+
 `ViewportAttachment` is also exported for direct composition. Homeframe owns
 its position and size but intentionally supplies no colors, fonts, borders, or
 shadows. `homeframe doctor --strict` reports app-authored fixed/sticky regions

@@ -12,7 +12,7 @@
     "check": "npm run build && npm run doctor"
   },
   "dependencies": {
-    "@builtbyted/homeframe": "0.1.5",
+    "@builtbyted/homeframe": "0.1.6",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

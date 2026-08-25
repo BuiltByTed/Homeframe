@@ -154,8 +154,12 @@ export function useHomeframeLogout() {
     }
     if (notificationSubscription && 'serviceWorker' in navigator) {
       try {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager?.getSubscription();
+        // `navigator.serviceWorker.ready` intentionally never rejects and can
+        // remain pending forever when an app is not currently registered.
+        // Logout cleanup must be bounded, so only inspect a registration that
+        // already exists for this document.
+        const registration = await navigator.serviceWorker.getRegistration();
+        const subscription = await registration?.pushManager?.getSubscription();
         if (subscription) {
           const notificationConfig = config.notifications;
           let transport: PushSubscriptionTransport | null = null;

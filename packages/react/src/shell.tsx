@@ -162,6 +162,7 @@ export function AppShell({
       'data-hf-sidebar-mode': desktopLayout ? mode : undefined,
       'data-hf-header-placement': desktopLayout ? headerPlacement : undefined,
       'data-hf-has-dock': bottom == null ? 'false' : 'true',
+      'data-hf-bottom-keyboard-policy': bottom == null ? undefined : dockPolicy,
     },
     header == null && !desktopLayout
       ? <div />

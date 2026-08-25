@@ -33,4 +33,8 @@ describe('runtime structural CSS', () => {
   it('gives a dock attachment safe-bottom ownership only without a real dock', () => {
     expect(styles).toMatch(/\[data-hf-shell\]\[data-hf-has-dock='false'\][^{}]*> \[data-hf-viewport-attachment\]\[data-hf-attachment-anchor='dock'\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
   });
+
+  it('removes a keyboard-covered manual dock from an avoiding attachment anchor', () => {
+    expect(styles).toMatch(/data-hf-keyboard-target='dock'[^{}]*data-hf-bottom-keyboard-policy='manual'[^{}]*data-hf-attachment-anchor='dock'[^{}]*data-keyboard-policy='avoid'[^{}]*\{[^}]*bottom:\s*0/s);
+  });
 });
