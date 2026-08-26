@@ -760,24 +760,26 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
     }, [onDismiss]);
 
     useEffect(() => {
-      if (!open || !modal) return;
+      if (!open) return;
       const previouslyFocused = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-      publishFloatingWindowState(true);
-      const focusFrame = requestAnimationFrame(() => {
-        const element = windowRef.current;
-        const target = element?.querySelector<HTMLElement>('[autofocus], ' + FLOATING_WINDOW_FOCUSABLE)
-          ?? element;
-        target?.focus({ preventScroll: true });
-      });
+      if (modal) publishFloatingWindowState(true);
+      const focusFrame = modal
+        ? requestAnimationFrame(() => {
+            const element = windowRef.current;
+            const target = element?.querySelector<HTMLElement>('[autofocus], ' + FLOATING_WINDOW_FOCUSABLE)
+              ?? element;
+            target?.focus({ preventScroll: true });
+          })
+        : null;
       const onKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Escape' && onDismissRef.current) {
           event.preventDefault();
           onDismissRef.current();
           return;
         }
-        if (event.key !== 'Tab' || !windowRef.current) return;
+        if (!modal || event.key !== 'Tab' || !windowRef.current) return;
         const focusable = [...windowRef.current.querySelectorAll<HTMLElement>(
           FLOATING_WINDOW_FOCUSABLE,
         )].filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
@@ -798,9 +800,9 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
       };
       window.addEventListener('keydown', onKeyDown);
       return () => {
-        cancelAnimationFrame(focusFrame);
+        if (focusFrame !== null) cancelAnimationFrame(focusFrame);
         window.removeEventListener('keydown', onKeyDown);
-        publishFloatingWindowState(false);
+        if (modal) publishFloatingWindowState(false);
         if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
       };
     }, [modal, open]);

@@ -119,6 +119,38 @@ describe('React shell primitives', () => {
     expect(trigger).toHaveFocus();
   });
 
+  it('dismisses a non-modal floating window on Escape without trapping focus', async () => {
+    function NonModalFloatingWindowHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen(true)}>Open inspector</button>
+          <div data-hf-portals="" />
+          <FloatingWindow
+            open={open}
+            modal={false}
+            aria-label="Inspector"
+            onDismiss={() => setOpen(false)}
+          >
+            <button type="button">Inspector action</button>
+          </FloatingWindow>
+        </>
+      );
+    }
+
+    const { container } = render(<NonModalFloatingWindowHarness />);
+    const trigger = screen.getByRole('button', { name: 'Open inspector' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByRole('dialog', { name: 'Inspector' });
+    expect(document.documentElement.dataset.hfModal).toBeUndefined();
+    expect(trigger).toHaveFocus();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(container.querySelector('[data-hf-floating-window]')).toBeNull());
+    expect(trigger).toHaveFocus();
+  });
+
   it('supports an existing shell with explicit measured primitive composition', () => {
     const { container } = render(
       <HomeframeProvider config={{ serviceWorker: false }}>
