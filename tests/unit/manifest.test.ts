@@ -44,6 +44,17 @@ describe('manifest generation', () => {
     ]));
   });
 
+  it('content-versions generated install icons in manifest metadata', () => {
+    const manifest = createManifest(config, '/', {
+      'generated/icon-192.png': '192-revision',
+      'generated/icon-512.png': '512-revision',
+    });
+    expect(manifest.icons).toEqual(expect.arrayContaining([
+      expect.objectContaining({ src: '/generated/icon-192.png?v=192-revision' }),
+      expect.objectContaining({ src: '/generated/icon-512.png?v=512-revision' }),
+    ]));
+  });
+
   it('emits maskable metadata and assets only when explicitly configured', async () => {
     const root = await mkdtemp(join(tmpdir(), 'homeframe-maskable-opt-in-'));
     try {

@@ -466,7 +466,13 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', /light|dark/);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('light');
-  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /manifest\.webmanifest\?v=[a-f0-9]{16}$/);
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', /apple-touch-icon\.png\?v=[a-f0-9]{16}$/);
+  await expect(page.locator('link[rel="apple-touch-startup-image"]').first()).toHaveAttribute('href', /\.png\?v=[a-f0-9]{16}$/);
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ src: expect.stringMatching(/icon-192\.png\?v=[a-f0-9]{16}$/) }),
+    expect.objectContaining({ src: expect.stringMatching(/icon-512\.png\?v=[a-f0-9]{16}$/) }),
+  ]));
   expect(await page.evaluate(() => window.__HOMEFRAME_BUILD__)).toMatchObject({
     serviceWorkerConfig: { mode: 'automatic', reload: 'safe-point' },
     reactConfig: {

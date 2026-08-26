@@ -33,7 +33,7 @@ const appleDevices: AppleDevice[] = [
 
 export interface GeneratedAssetSet {
   assets: GeneratedHomeframeAsset[];
-  startupLinks: Array<{ href: string; media: string }>;
+  startupLinks: Array<{ fileName: string; href: string; media: string }>;
   inlineLogo: string;
 }
 
@@ -132,7 +132,7 @@ export async function generateAssets(
 
   const inlineLogoBuffer = await iconBuffer(icon, 128);
   const inlineLogo = `data:image/png;base64,${inlineLogoBuffer.toString('base64')}`;
-  const startupLinks: Array<{ href: string; media: string }> = [];
+  const startupLinks: GeneratedAssetSet['startupLinks'] = [];
 
   if (config.splash?.generateAppleStartupImages !== false) {
     const scheme = config.app.colorScheme ?? 'system';
@@ -165,6 +165,7 @@ export async function generateAssets(
             height: pixelHeight,
           });
           startupLinks.push({
+            fileName,
             href: joinBase(base, fileName),
             media: [
               `(device-width: ${cssWidth}px)`,

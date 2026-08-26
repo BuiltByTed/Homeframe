@@ -1,7 +1,26 @@
 import type { HomeframeConfig } from './types.js';
 import { joinBase } from './assets.js';
 
-export function createManifest(config: HomeframeConfig, base: string): Record<string, unknown> {
+export type HomeframeAssetRevisions = Readonly<Record<string, string>>;
+
+export function appendAssetRevision(url: string, revision?: string): string {
+  if (!revision) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(revision)}`;
+}
+
+export function generatedAssetUrl(
+  base: string,
+  fileName: string,
+  revisions: HomeframeAssetRevisions = {},
+): string {
+  return appendAssetRevision(joinBase(base, fileName), revisions[fileName]);
+}
+
+export function createManifest(
+  config: HomeframeConfig,
+  base: string,
+  assetRevisions: HomeframeAssetRevisions = {},
+): Record<string, unknown> {
   const { app } = config;
   const forcedDark = app.colorScheme === 'dark';
   return {
@@ -39,11 +58,11 @@ export function createManifest(config: HomeframeConfig, base: string): Record<st
       protocol_handlers: app.protocolHandlers,
     } : {}),
     icons: [
-      { src: joinBase(base, 'generated/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: joinBase(base, 'generated/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: generatedAssetUrl(base, 'generated/icon-192.png', assetRevisions), sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: generatedAssetUrl(base, 'generated/icon-512.png', assetRevisions), sizes: '512x512', type: 'image/png', purpose: 'any' },
       ...(app.maskableIcon ? [
-        { src: joinBase(base, 'generated/icon-maskable-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-        { src: joinBase(base, 'generated/icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+        { src: generatedAssetUrl(base, 'generated/icon-maskable-192.png', assetRevisions), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: generatedAssetUrl(base, 'generated/icon-maskable-512.png', assetRevisions), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
       ] : []),
     ],
     ...(app.shortcuts?.length ? {

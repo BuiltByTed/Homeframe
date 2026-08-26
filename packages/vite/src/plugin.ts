@@ -9,7 +9,14 @@ import {
 } from '@builtbyted/sw';
 import { generateAssets, joinBase, type GeneratedAssetSet } from './assets.js';
 import { criticalCss } from './critical.js';
-import { createManifest, runtimeCacheOverlapWarnings, validateConfig } from './manifest.js';
+import {
+  appendAssetRevision,
+  createManifest,
+  generatedAssetUrl,
+  runtimeCacheOverlapWarnings,
+  validateConfig,
+  type HomeframeAssetRevisions,
+} from './manifest.js';
 import { bootSplashMarkup } from './splash.js';
 import type {
   GeneratedHomeframeAsset,
@@ -63,7 +70,11 @@ export function homeframe(config: HomeframeConfig): Plugin {
         fileName: asset.fileName,
         source: asset.source,
       });
-      const manifest = `${JSON.stringify(createManifest(config, vite.base), null, 2)}\n`;
+      const manifest = `${JSON.stringify(createManifest(
+        config,
+        vite.base,
+        assetRevisionMap(generated.assets),
+      ), null, 2)}\n`;
       this.emitFile({ type: 'asset', fileName: 'manifest.webmanifest', source: manifest });
       this.emitFile({
         type: 'asset',
@@ -74,6 +85,12 @@ export function homeframe(config: HomeframeConfig): Plugin {
     async transformIndexHtml(html) {
       generated ??= await assetsPromise!;
       ensureNoConflictingMetadata(html);
+      const assetRevisions = assetRevisionMap(generated.assets);
+      const manifest = createManifest(config, vite.base, assetRevisions);
+      const manifestHref = appendAssetRevision(
+        joinBase(vite.base, 'manifest.webmanifest'),
+        hash(JSON.stringify(manifest)).slice(0, 16),
+      );
       const nonce = config.security?.cspNonce;
       const nonceAttribute = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
       const serviceWorkerUrl = config.serviceWorker === false || config.serviceWorker?.enabled === false
@@ -89,8 +106,8 @@ export function homeframe(config: HomeframeConfig): Plugin {
         serviceWorkerScope: config.app.scope,
         client: clientConfiguration(config, vite.base, config.serviceWorker === false ? undefined : config.serviceWorker, buildId),
       });
-      const startupLinks = generated.startupLinks.map(({ href, media }) =>
-        `<link rel="apple-touch-startup-image" href="${escapeHtml(href)}" media="${escapeHtml(media)}">`).join('\n');
+      const startupLinks = generated.startupLinks.map(({ fileName, href, media }) =>
+        `<link rel="apple-touch-startup-image" href="${escapeHtml(appendAssetRevision(href, assetRevisions[fileName]))}" media="${escapeHtml(media)}">`).join('\n');
       const head = [
         '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-visual">',
         '<meta name="apple-mobile-web-app-capable" content="yes">',
@@ -99,9 +116,9 @@ export function homeframe(config: HomeframeConfig): Plugin {
         `<meta name="apple-mobile-web-app-status-bar-style" content="${config.splash?.appleStatusBarStyle ?? 'black'}">`,
         `<meta name="color-scheme" content="${documentColorScheme(config)}">`,
         ...themeColorMetadata(config),
-        `<link rel="manifest" href="${joinBase(vite.base, 'manifest.webmanifest')}">`,
-        `<link rel="apple-touch-icon" href="${joinBase(vite.base, 'generated/apple-touch-icon.png')}">`,
-        `<link rel="icon" type="image/png" sizes="32x32" href="${joinBase(vite.base, 'generated/favicon-32.png')}">`,
+        `<link rel="manifest" href="${manifestHref}">`,
+        `<link rel="apple-touch-icon" href="${generatedAssetUrl(vite.base, 'generated/apple-touch-icon.png', assetRevisions)}">`,
+        `<link rel="icon" type="image/png" sizes="32x32" href="${generatedAssetUrl(vite.base, 'generated/favicon-32.png', assetRevisions)}">`,
         startupLinks,
         `<style id="homeframe-runtime-vars"${nonceAttribute}>:root{}</style>`,
         `<style id="homeframe-critical"${nonceAttribute}>${critical}</style>`,
@@ -117,7 +134,11 @@ export function homeframe(config: HomeframeConfig): Plugin {
     },
     async configureServer(server) {
       generated ??= await assetsPromise!;
-      const manifest = Buffer.from(JSON.stringify(createManifest(config, vite.base)), 'utf8');
+      const manifest = Buffer.from(JSON.stringify(createManifest(
+        config,
+        vite.base,
+        assetRevisionMap(generated.assets),
+      )), 'utf8');
       const assetMap = new Map(generated.assets.map((asset) => [`/${asset.fileName}`, asset]));
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? '/', 'http://homeframe.local').pathname;
@@ -366,6 +387,13 @@ function assetReport(asset: GeneratedHomeframeAsset) {
     bytes: typeof asset.source === 'string' ? Buffer.byteLength(asset.source) : asset.source.byteLength,
     sha256: hash(asset.source),
   };
+}
+
+function assetRevisionMap(assets: readonly GeneratedHomeframeAsset[]): HomeframeAssetRevisions {
+  return Object.fromEntries(assets.map((asset) => [
+    asset.fileName,
+    hash(asset.source).slice(0, 16),
+  ]));
 }
 
 function hash(value: string | Uint8Array): string {

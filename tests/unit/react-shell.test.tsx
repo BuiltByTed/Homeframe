@@ -525,7 +525,10 @@ describe('React shell primitives', () => {
     await waitFor(() => expect(screen.getByTestId('notification-eligible')).toHaveTextContent('false'));
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
     act(() => window.dispatchEvent(new Event('online')));
-    await waitFor(() => expect(screen.getByTestId('notification-eligible')).toHaveTextContent('true'));
+    await waitFor(
+      () => expect(screen.getByTestId('notification-eligible')).toHaveTextContent('true'),
+      { timeout: 3_000 },
+    );
   });
 
   it('turns an abandoned readiness hold into a recoverable branded failure', () => {

@@ -297,6 +297,11 @@ Use `app.appleTouchIcon` when the iOS treatment differs. The generated maskable
 icon uses an opaque app-color canvas and contains source artwork within the
 standard maskable safe circle instead of cropping it silently.
 
+Homeframe content-versions the generated manifest, install icons, Apple touch
+icon, favicon, and startup images in browser metadata. Changing source artwork
+therefore changes the referenced URL and bypasses stale CDN and browser cache
+entries without changing the app's manifest identity.
+
 ## Verification
 
 ```bash
