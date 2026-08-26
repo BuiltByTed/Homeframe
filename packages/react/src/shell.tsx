@@ -46,6 +46,12 @@ export function AppViewport<T extends ElementType = 'div'>({
 export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   as?: ElementType;
   contentAs?: ElementType;
+  /**
+   * Marks an existing shell composition while the app places AppHeader,
+   * AppScrollView, ViewportDock, and portal primitives itself. No empty or
+   * duplicate convenience slots are generated in this mode.
+   */
+  manualComposition?: boolean;
   header?: ReactNode;
   /** Overlays the measured header while scroll content starts beneath it and can move behind it. */
   headerOverlay?: boolean;
@@ -182,6 +188,7 @@ function readStoredSidebarMode(
 export function AppShell({
   as = 'div',
   contentAs = 'main',
+  manualComposition = false,
   header,
   headerOverlay = false,
   headerAttachment,
@@ -283,6 +290,19 @@ export function AppShell({
       if (previousFocus?.isConnected) previousFocus.focus();
     };
   }, [mobileLayout, mobileOpen, setMobileOpen]);
+
+  if (manualComposition) {
+    return (
+      <AppSidebarContext.Provider value={sidebarController}>
+        {createElement(as, {
+          ...props,
+          'data-hf-shell': '',
+          'data-hf-manual-composition': '',
+          'data-hf-bottom-keyboard-policy': dockPolicy,
+        }, children)}
+      </AppSidebarContext.Provider>
+    );
+  }
 
   const shell = createElement(
     as,
@@ -658,14 +678,165 @@ function revealInside(scroller: HTMLElement | null, element: Element): void {
 }
 
 export function HomeframePortal({ children }: { children: ReactNode }) {
-  if (typeof document === 'undefined') return null;
-  const portal = document.querySelector<HTMLElement>('[data-hf-portals]');
+  const [portal, setPortal] = useState<HTMLElement | null>(() => (
+    typeof document === 'undefined'
+      ? null
+      : document.querySelector<HTMLElement>('[data-hf-portals]')
+  ));
+  useLayoutEffect(() => {
+    if (portal?.isConnected) return;
+    const next = document.querySelector<HTMLElement>('[data-hf-portals]');
+    if (next) {
+      setPortal(next);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      const discovered = document.querySelector<HTMLElement>('[data-hf-portals]');
+      if (!discovered) return;
+      setPortal(discovered);
+      observer.disconnect();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [portal]);
   return portal ? createPortal(children, portal) : null;
 }
 
 export function HomeframePortalRoot(props: HTMLAttributes<HTMLDivElement>) {
   return <div {...props} data-hf-portals="" />;
 }
+
+export type FloatingWindowPlacement = 'bottom-start' | 'bottom-end' | 'center';
+export type FloatingWindowMobilePresentation = 'fullscreen' | 'sheet';
+
+export interface FloatingWindowProps extends HTMLAttributes<HTMLElement> {
+  open?: boolean;
+  placement?: FloatingWindowPlacement;
+  mobilePresentation?: FloatingWindowMobilePresentation;
+  modal?: boolean;
+  backdrop?: boolean;
+  dismissOnBackdrop?: boolean;
+  onDismiss?: () => void;
+}
+
+let openFloatingWindows = 0;
+
+function publishFloatingWindowState(open: boolean): void {
+  openFloatingWindows = Math.max(0, openFloatingWindows + (open ? 1 : -1));
+  if (openFloatingWindows > 0) document.documentElement.dataset.hfModal = 'open';
+  else delete document.documentElement.dataset.hfModal;
+}
+
+const FLOATING_WINDOW_FOCUSABLE = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+/**
+ * A viewport-owned application window. It is portaled above shell chrome,
+ * traps focus while modal, and can become a full-screen mobile/PWA surface.
+ */
+export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
+  function FloatingWindow({
+    open = true,
+    placement = 'bottom-end',
+    mobilePresentation = 'fullscreen',
+    modal = true,
+    backdrop = false,
+    dismissOnBackdrop = true,
+    onDismiss,
+    children,
+    ...props
+  }, forwardedRef) {
+    const windowRef = useRef<HTMLElement>(null);
+    const onDismissRef = useRef(onDismiss);
+
+    useLayoutEffect(() => {
+      onDismissRef.current = onDismiss;
+    }, [onDismiss]);
+
+    useEffect(() => {
+      if (!open || !modal) return;
+      const previouslyFocused = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      publishFloatingWindowState(true);
+      const focusFrame = requestAnimationFrame(() => {
+        const element = windowRef.current;
+        const target = element?.querySelector<HTMLElement>('[autofocus], ' + FLOATING_WINDOW_FOCUSABLE)
+          ?? element;
+        target?.focus({ preventScroll: true });
+      });
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape' && onDismissRef.current) {
+          event.preventDefault();
+          onDismissRef.current();
+          return;
+        }
+        if (event.key !== 'Tab' || !windowRef.current) return;
+        const focusable = [...windowRef.current.querySelectorAll<HTMLElement>(
+          FLOATING_WINDOW_FOCUSABLE,
+        )].filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+        if (focusable.length === 0) {
+          event.preventDefault();
+          windowRef.current.focus({ preventScroll: true });
+          return;
+        }
+        const first = focusable[0]!;
+        const last = focusable[focusable.length - 1]!;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus({ preventScroll: true });
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus({ preventScroll: true });
+        }
+      };
+      window.addEventListener('keydown', onKeyDown);
+      return () => {
+        cancelAnimationFrame(focusFrame);
+        window.removeEventListener('keydown', onKeyDown);
+        publishFloatingWindowState(false);
+        if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
+      };
+    }, [modal, open]);
+
+    if (!open) return null;
+    return (
+      <HomeframePortal>
+        <div
+          data-hf-floating-window-layer=""
+          data-hf-floating-placement={placement}
+          data-hf-floating-mobile={mobilePresentation}
+          data-hf-floating-modal={modal || undefined}
+        >
+          {backdrop ? (
+            <div
+              data-hf-floating-window-backdrop=""
+              aria-hidden="true"
+              onClick={dismissOnBackdrop ? onDismiss : undefined}
+            />
+          ) : null}
+          {createElement('section', {
+            ...props,
+            ref: (element: HTMLElement | null) => {
+              windowRef.current = element;
+              assignRef(forwardedRef, element);
+            },
+            role: props.role ?? 'dialog',
+            'aria-modal': modal || undefined,
+            tabIndex: props.tabIndex ?? -1,
+            'data-hf-floating-window': '',
+          }, children)}
+        </div>
+      </HomeframePortal>
+    );
+  },
+);
 
 export function SelectableText<T extends ElementType = 'span'>({
   as,

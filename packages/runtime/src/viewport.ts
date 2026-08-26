@@ -762,14 +762,19 @@ export class ViewportController {
     const previousOpen = this.snapshot.keyboard.phase === 'open'
       || this.snapshot.keyboard.phase === 'opening';
     const previousActive = this.snapshot.keyboard.phase !== 'closed';
+    const visualKeyboardCapable = this.isIosStandalone()
+      || navigator.maxTouchPoints > 0
+      || window.matchMedia?.('(pointer: coarse)').matches === true;
     const meaningfulVisualReduction = visualKeyboardReduction >= threshold && scale <= 1.01;
     const movingVisualReduction = visualKeyboardReduction > 1 && scale <= 1.01;
-    const inferredOpen = Boolean(this.focusedEditable)
+    const inferredOpen = visualKeyboardCapable
+      && Boolean(this.focusedEditable)
       && (meaningfulVisualReduction || (this.keyboardSettling && movingVisualReduction));
     // After blur, WebKit can retain the old visual viewport for several frames.
     // Keep publishing that geometry as `closing` so an avoid dock follows the
     // keyboard instead of falling to the physical bottom prematurely.
-    const inferredClosing = !this.focusedEditable
+    const inferredClosing = visualKeyboardCapable
+      && !this.focusedEditable
       && previousActive
       && movingVisualReduction;
     const hasVirtualKeyboard = virtualKeyboardHeight > 0

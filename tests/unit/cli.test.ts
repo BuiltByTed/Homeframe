@@ -240,6 +240,34 @@ describe('Homeframe source doctor', () => {
       ]),
     );
   });
+
+  it('does not mistake component body class names for document scrolling', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      .addon-modal-body { overflow-y: auto; }
+      .markdown-body pre { overflow: auto; }
+      html[data-theme='dark'] .card-body { overflow: auto; background: black; }
+      .real-content { overflow: auto; }
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_BODY_SCROLL')).toEqual([]);
+    expect(diagnostics.filter((item) => item.code === 'HF_ROOT_BACKGROUND_OWNERSHIP')).toEqual([]);
+  });
+
+  it('still reports scrolling on the actual document roots', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      html[data-theme='dark'], body { overflow-y: auto; }
+      :root { background: black; }
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_BODY_SCROLL')).toHaveLength(1);
+    expect(diagnostics.filter((item) => item.code === 'HF_ROOT_BACKGROUND_OWNERSHIP')).toHaveLength(1);
+  });
 });
 
 async function fixtureDirectory(): Promise<string> {

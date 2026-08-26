@@ -68,7 +68,9 @@ export default defineHomeframe({
     icon: './brand/icon.svg',
   },
   viewport: {
-    selection: 'controls-only',
+    // Disable incidental selection everywhere, allow it only on desktop, or
+    // retain normal browser selection everywhere.
+    selection: 'allow-desktop',
     snapshot: 'brand',
     bottomDock: 'avoid',
   },

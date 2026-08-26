@@ -88,7 +88,11 @@ export async function generateAssets(
     ? await readFile(sourcePath(root, config.splash.logo))
     : icon;
   const maskablePadding = config.app.maskableIconPaddingRatio ?? 0.2172;
-  const maskableBackground = config.app.maskableIconBackgroundColor ?? config.app.backgroundColor;
+  // Android/Chrome apply a device-specific mask to this entire canvas. Using
+  // the launch-screen background here creates the familiar white/off-white
+  // plate around otherwise transparent brand artwork. Adaptive icons need an
+  // intentional, opaque brand canvas instead.
+  const maskableBackground = config.app.maskableIconBackgroundColor ?? config.app.themeColor;
   const assets: GeneratedHomeframeAsset[] = [];
 
   const addIcon = async (
@@ -116,6 +120,7 @@ export async function generateAssets(
     // the standardized 40%-radius maskable safe circle. Apps whose source is
     // already an adaptive/full-bleed composition can explicitly reduce the
     // inset so the operating system does not display a redundant outer frame.
+    addIcon('generated/icon-maskable-192.png', maskable, 192, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
     addIcon('generated/icon-maskable-512.png', maskable, 512, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
     addIcon('generated/apple-touch-icon.png', appleTouchIcon, 180, 'Apple touch icon'),
     addIcon('generated/favicon-32.png', icon, 32, 'favicon'),

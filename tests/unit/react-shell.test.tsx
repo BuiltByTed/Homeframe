@@ -6,6 +6,8 @@ import {
   AppShell,
   AppSidebarLabel,
   AppViewport,
+  FloatingWindow,
+  HomeframeErrorBoundary,
   HomeframeInput,
   HomeframeNudgeProvider,
   HomeframeProvider,
@@ -29,6 +31,7 @@ beforeEach(() => {
   delete document.documentElement.dataset.hfModal;
   delete document.documentElement.dataset.hfPrompt;
   delete document.documentElement.dataset.hfNudges;
+  delete document.documentElement.dataset.hfCriticalTask;
   history.replaceState({}, '', '/');
   Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
 });
@@ -74,6 +77,80 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
     expect(container.querySelector('[data-hf-dock]')).toHaveTextContent('Bottom');
     expect(container.querySelector('[data-hf-portals]')).not.toBeNull();
+  });
+
+  it('portals a floating window above shell chrome and owns modal focus lifecycle', async () => {
+    function FloatingWindowHarness() {
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <div data-hf-shell="">
+            <button type="button" onClick={() => setOpen(true)}>Open Mark</button>
+          </div>
+          <div data-hf-portals="" />
+          <FloatingWindow
+            open={open}
+            placement="bottom-start"
+            mobilePresentation="fullscreen"
+            aria-label="Mark"
+            onDismiss={() => setOpen(false)}
+          >
+            <button type="button">Inside Mark</button>
+          </FloatingWindow>
+        </>
+      );
+    }
+
+    const { container } = render(<FloatingWindowHarness />);
+    const trigger = screen.getByRole('button', { name: 'Open Mark' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const floatingWindow = await screen.findByRole('dialog', { name: 'Mark' });
+    expect(floatingWindow.closest('[data-hf-portals]')).not.toBeNull();
+    expect(floatingWindow.closest('[data-hf-floating-placement="bottom-start"]')).not.toBeNull();
+    expect(document.documentElement.dataset.hfModal).toBe('open');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Inside Mark' })).toHaveFocus());
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(container.querySelector('[data-hf-floating-window]')).toBeNull());
+    expect(document.documentElement.dataset.hfModal).toBeUndefined();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('supports an existing shell with explicit measured primitive composition', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell manualComposition className="existing-shell">
+            <div className="existing-stage">
+              <AppScrollView>Content</AppScrollView>
+            </div>
+            <ViewportDock>Navigation</ViewportDock>
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    const shell = container.querySelector('[data-hf-shell]');
+    expect(shell).toHaveClass('existing-shell');
+    expect(shell).toHaveAttribute('data-hf-manual-composition');
+    expect(shell?.querySelector('[data-hf-content]')).toBeNull();
+    expect(shell?.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
+    expect(shell?.querySelector('[data-hf-dock]')).toHaveTextContent('Navigation');
+  });
+
+  it('keeps a shell as the direct viewport child through the error boundary', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <HomeframeErrorBoundary fallback={<div>Recovery</div>}>
+            <AppShell manualComposition>Content</AppShell>
+          </HomeframeErrorBoundary>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    const viewport = container.querySelector('[data-hf-viewport]')!;
+    const shell = container.querySelector('[data-hf-shell]')!;
+    expect(viewport.firstElementChild).toBe(shell);
   });
 
   it('combines overlay placement with keyboard avoidance', () => {

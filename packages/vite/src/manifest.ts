@@ -41,6 +41,7 @@ export function createManifest(config: HomeframeConfig, base: string): Record<st
     icons: [
       { src: joinBase(base, 'generated/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: joinBase(base, 'generated/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: joinBase(base, 'generated/icon-maskable-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
       { src: joinBase(base, 'generated/icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
     ...(app.shortcuts?.length ? {
@@ -112,7 +113,7 @@ export function validateConfig(config: HomeframeConfig): void {
     errors.push('security.cspNonce must be a non-empty attribute-safe nonce or server replacement token.');
   }
   const viewport = config.viewport;
-  if (viewport?.selection && !['controls-only', 'allow'].includes(viewport.selection)) errors.push('viewport.selection must be controls-only or allow.');
+  if (viewport?.selection && !['controls-only', 'allow-desktop', 'allow'].includes(viewport.selection)) errors.push('viewport.selection must be controls-only, allow-desktop, or allow.');
   if (viewport?.snapshot && !['preserve', 'brand', 'privacy'].includes(viewport.snapshot)) errors.push('viewport.snapshot must be preserve, brand, or privacy.');
   if (viewport?.bottomDock && !['avoid', 'hide', 'overlay', 'manual'].includes(viewport.bottomDock)) errors.push('viewport.bottomDock must be avoid, hide, overlay, or manual.');
   if (viewport?.keyboardThresholdPx !== undefined && (!Number.isFinite(viewport.keyboardThresholdPx) || viewport.keyboardThresholdPx <= 0)) errors.push('viewport.keyboardThresholdPx must be greater than zero.');

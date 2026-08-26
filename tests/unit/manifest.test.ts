@@ -1,8 +1,12 @@
-import { resolve } from 'node:path';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import sharp from 'sharp';
 import { describe, expect, it, vi } from 'vitest';
 import {
   createManifest,
   defineHomeframe,
+  generateAssets,
   homeframe,
   runtimeCacheOverlapWarnings,
   validateConfig,
@@ -34,8 +38,38 @@ describe('manifest generation', () => {
     expect(manifest.icons).toEqual(expect.arrayContaining([
       expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
       expect.objectContaining({ sizes: '512x512', purpose: 'any' }),
+      expect.objectContaining({ sizes: '192x192', purpose: 'maskable' }),
       expect.objectContaining({ sizes: '512x512', purpose: 'maskable' }),
     ]));
+  });
+
+  it('renders maskable icons on an opaque brand canvas instead of the launch background', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'homeframe-maskable-'));
+    try {
+      await writeFile(join(root, 'icon.svg'), `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="40" fill="#abff44" />
+        </svg>
+      `);
+      const generated = await generateAssets({
+        ...config,
+        app: {
+          ...config.app,
+          themeColor: '#123456',
+          backgroundColor: '#ffffff',
+          icon: './icon.svg',
+        },
+      }, root, '/');
+      const maskable = generated.assets.find((asset) =>
+        asset.fileName === 'generated/icon-maskable-512.png');
+      expect(maskable).toBeDefined();
+      const pixel = await sharp(maskable!.source).extract({ left: 0, top: 0, width: 1, height: 1 })
+        .raw()
+        .toBuffer();
+      expect([...pixel]).toEqual([0x12, 0x34, 0x56, 0xff]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('rejects out-of-scope identity and shortcut URLs', () => {
@@ -92,6 +126,17 @@ describe('manifest generation', () => {
       ...config,
       viewport: { keyboardOcclusion: 'blurred' },
     } as never)).toThrow(/keyboardOcclusion must be opaque or transparent/);
+  });
+
+  it('accepts desktop-only text selection and rejects unknown policies', () => {
+    expect(() => validateConfig({
+      ...config,
+      viewport: { selection: 'allow-desktop' },
+    })).not.toThrow();
+    expect(() => validateConfig({
+      ...config,
+      viewport: { selection: 'sometimes' },
+    } as never)).toThrow(/selection must be controls-only, allow-desktop, or allow/);
   });
 
   it('rejects unsafe worker paths, unbounded rules, and out-of-scope notification routes', () => {

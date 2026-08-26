@@ -102,6 +102,9 @@ export default defineHomeframe({
     icon: './brand/icon-1024.png',
     // Optional dedicated sources; otherwise Homeframe safely adapts `icon`.
     maskableIcon: './brand/icon-maskable-1024.png',
+    // Opaque adaptive-icon canvas; defaults to themeColor (not backgroundColor)
+    // so Chrome/Android do not add a white plate around transparent artwork.
+    maskableIconBackgroundColor: '#172554',
     appleTouchIcon: './brand/icon-ios-1024.png',
   },
   viewport: {
@@ -149,6 +152,20 @@ Passing `sidebar` to `AppShell` enables its desktop grid at 900px while preservi
 ```
 
 Use `useAppSidebar()` inside the sidebar or its footer to read the current `expanded | rail | hidden` mode and call `setMode()` or `cycleMode()`. The controlled `sidebarMode` and `onSidebarModeChange` props are available when layout state belongs in application state. Override `--hf-sidebar-width` and `--hf-sidebar-rail-width` to fit the product; Homeframe narrows both from 900–1099px and hides the desktop sidebar below 900px.
+
+For an established application whose shell DOM must remain intact during
+adoption, set `manualComposition` and place one `AppHeader`, `AppScrollView`,
+and `ViewportDock` yourself. Homeframe still owns shell state, viewport
+geometry, keyboard policy, and portal placement without generating duplicate
+convenience regions.
+
+```tsx
+<AppShell manualComposition className="existing-shell">
+  <AppHeader>{header}</AppHeader>
+  <AppScrollView>{route}</AppScrollView>
+  <ViewportDock keyboard="hide">{navigation}</ViewportDock>
+</AppShell>
+```
 
 ### Deep links and permalinks
 

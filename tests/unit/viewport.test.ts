@@ -15,6 +15,7 @@ function installViewport(): MockVisualViewport {
   Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true });
   Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
   Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+  Object.defineProperty(navigator, 'maxTouchPoints', { value: 5, configurable: true });
   return viewport;
 }
 
@@ -344,6 +345,29 @@ describe('ViewportController', () => {
     viewport.dispatchEvent(new Event('resize'));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(controller.getSnapshot().keyboard.phase).toBe('closed');
+    controller.stop();
+  });
+
+  it('does not treat a focused desktop DevTools viewport reduction as a keyboard', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: 0, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    controller.start();
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    document.body.append(input);
+    input.focus();
+
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(controller.getSnapshot().keyboard).toMatchObject({
+      phase: 'closed',
+      height: 0,
+      source: 'none',
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-keyboard-height')).toBe('0px');
     controller.stop();
   });
 

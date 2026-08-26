@@ -40,4 +40,13 @@ describe('Homeframe critical CSS', () => {
     expect(css).toContain('@media(prefers-color-scheme:dark)');
     expect(css).toContain('--hf-app-background:#010203');
   });
+
+  it('can suppress the branded boot surface in browser tabs without disabling installed launch assets', () => {
+    const configured = config();
+    configured.splash = { showInBrowserTabs: false, generateAppleStartupImages: true };
+    const css = criticalCss(configured);
+
+    expect(css).toContain(':root[data-hf-display-mode=browser] #homeframe-boot-splash');
+    expect(css).toContain('visibility:hidden;opacity:0;pointer-events:none');
+  });
 });

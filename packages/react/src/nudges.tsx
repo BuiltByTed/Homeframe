@@ -495,10 +495,14 @@ export function useNotificationCapability(): NotificationCapabilityResult {
       }
       const registration = await navigator.serviceWorker.ready;
       const existing = await registration.pushManager.getSubscription();
+      const configuredKey = notificationConfig.applicationServerKey;
+      const applicationServerKey = typeof configuredKey === 'function'
+        ? await configuredKey()
+        : configuredKey;
       const subscriptionOptions: PushSubscriptionOptionsInit = {
         userVisibleOnly: true,
-        ...(notificationConfig.applicationServerKey ? {
-          applicationServerKey: decodeApplicationServerKey(notificationConfig.applicationServerKey),
+        ...(applicationServerKey ? {
+          applicationServerKey: decodeApplicationServerKey(applicationServerKey),
         } : {}),
       };
       const next = existing ?? await registration.pushManager.subscribe(subscriptionOptions);

@@ -47,7 +47,7 @@ export interface HomeframeAppConfig {
   maskableIcon?: string;
   /** Fraction of each edge reserved around maskable artwork. Defaults to the portable 21.72% safe-circle inset. */
   maskableIconPaddingRatio?: number;
-  /** Opaque canvas behind maskable artwork. Defaults to app.backgroundColor. */
+  /** Opaque adaptive-icon canvas. Defaults to themeColor, never the launch-screen background. */
   maskableIconBackgroundColor?: string;
   appleTouchIcon?: string;
   lang?: string;
@@ -80,6 +80,8 @@ export interface HomeframeSplashConfig {
   enabled?: boolean;
   title?: string;
   logo?: string;
+  /** Keep the branded HTML boot surface hidden in ordinary browser tabs. */
+  showInBrowserTabs?: boolean;
   generateAppleStartupImages?: boolean;
   appleStatusBarStyle?: 'default' | 'black' | 'black-translucent';
 }
@@ -122,7 +124,11 @@ export interface HomeframeSecurityConfig {
 }
 
 export interface HomeframeViewportConfig {
-  selection?: 'controls-only' | 'allow';
+  /**
+   * Text-selection policy. `allow-desktop` preserves touch-first behavior on
+   * compact viewports while restoring normal browser selection on desktop.
+   */
+  selection?: 'controls-only' | 'allow-desktop' | 'allow';
   snapshot?: 'preserve' | 'brand' | 'privacy';
   bottomDock?: 'avoid' | 'hide' | 'overlay' | 'manual';
   keyboardThresholdPx?: number;
