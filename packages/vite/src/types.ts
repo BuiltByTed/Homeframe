@@ -44,6 +44,7 @@ export interface HomeframeAppConfig {
   backgroundColorDark?: string;
   colorScheme?: 'system' | 'light' | 'dark';
   icon: string;
+  /** Optional adaptive icon source. Omit it to keep Chrome/macOS from applying its forced mask, padding, and shadow. */
   maskableIcon?: string;
   /** Fraction of each edge reserved around maskable artwork. Defaults to the portable 21.72% safe-circle inset. */
   maskableIconPaddingRatio?: number;

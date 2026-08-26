@@ -381,7 +381,6 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
       for (const size of ['192x192', '512x512']) {
         if (!icons.some((icon) => String(icon.sizes).includes(size))) diagnostics.push(error('HF_ICON_SIZE', `Manifest icon ${size} is missing.`, 'Provide valid source artwork and rebuild.'));
       }
-      if (!icons.some((icon) => String(icon.purpose).includes('maskable'))) diagnostics.push(error('HF_MASKABLE_ICON', 'Maskable icon is missing.', 'Provide maskable source artwork or use the generated padded icon.'));
     } catch (reason) {
       diagnostics.push(error('HF_MANIFEST_INVALID', `Manifest JSON is invalid: ${message(reason)}`, 'Rebuild after correcting configuration.'));
     }

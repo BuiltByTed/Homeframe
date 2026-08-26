@@ -100,7 +100,8 @@ export default defineHomeframe({
     backgroundColor: '#172554',
     backgroundColorDark: '#020617',
     icon: './brand/icon-1024.png',
-    // Optional dedicated sources; otherwise Homeframe safely adapts `icon`.
+    // Optional and intentionally opt-in. Omit this to preserve the exact `icon`
+    // silhouette on desktop Chrome/macOS without Chrome-added framing.
     maskableIcon: './brand/icon-maskable-1024.png',
     // Opaque adaptive-icon canvas; defaults to themeColor (not backgroundColor)
     // so Chrome/Android do not add a white plate around transparent artwork.

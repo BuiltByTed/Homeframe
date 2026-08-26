@@ -80,7 +80,7 @@ export async function generateAssets(
   const icon = await readFile(sourcePath(root, config.app.icon));
   const maskable = config.app.maskableIcon
     ? await readFile(sourcePath(root, config.app.maskableIcon))
-    : icon;
+    : null;
   const appleTouchIcon = config.app.appleTouchIcon
     ? await readFile(sourcePath(root, config.app.appleTouchIcon))
     : icon;
@@ -120,12 +120,14 @@ export async function generateAssets(
     // the standardized 40%-radius maskable safe circle. Apps whose source is
     // already an adaptive/full-bleed composition can explicitly reduce the
     // inset so the operating system does not display a redundant outer frame.
-    addIcon('generated/icon-maskable-192.png', maskable, 192, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
-    addIcon('generated/icon-maskable-512.png', maskable, 512, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
+    ...(maskable ? [
+      addIcon('generated/icon-maskable-192.png', maskable, 192, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
+      addIcon('generated/icon-maskable-512.png', maskable, 512, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
+    ] : []),
     addIcon('generated/apple-touch-icon.png', appleTouchIcon, 180, 'Apple touch icon'),
     addIcon('generated/favicon-32.png', icon, 32, 'favicon'),
     addIcon('generated/notification-icon.png', icon, 192, 'notification icon'),
-    addIcon('generated/notification-badge.png', maskable, 96, 'notification badge', 0.15),
+    addIcon('generated/notification-badge.png', maskable ?? icon, 96, 'notification badge', 0.15),
   ]);
 
   const inlineLogoBuffer = await iconBuffer(icon, 128);

@@ -26,7 +26,7 @@ describe('Homeframe doctor built-output checks', () => {
     expect(isCliEntryPoint(pathToFileURL(target).href, undefined)).toBe(false);
   });
 
-  it('discovers and validates a non-default generated worker path', async () => {
+  it('validates a build without requiring maskable icons', async () => {
     const dist = await fixtureDirectory();
     await writeFixture(dist, 'index.html', `<!doctype html>
       <html><head>
@@ -47,7 +47,6 @@ describe('Homeframe doctor built-output checks', () => {
       icons: [
         { src: '/192.png', sizes: '192x192', purpose: 'any' },
         { src: '/512.png', sizes: '512x512', purpose: 'any' },
-        { src: '/mask.png', sizes: '512x512', purpose: 'maskable' },
       ],
     }));
     await writeFixture(dist, 'homeframe-build.json', JSON.stringify({

@@ -41,8 +41,10 @@ export function createManifest(config: HomeframeConfig, base: string): Record<st
     icons: [
       { src: joinBase(base, 'generated/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
       { src: joinBase(base, 'generated/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: joinBase(base, 'generated/icon-maskable-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
-      { src: joinBase(base, 'generated/icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ...(app.maskableIcon ? [
+        { src: joinBase(base, 'generated/icon-maskable-192.png'), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: joinBase(base, 'generated/icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ] : []),
     ],
     ...(app.shortcuts?.length ? {
       shortcuts: app.shortcuts.map((shortcut) => ({
@@ -70,6 +72,9 @@ export function validateConfig(config: HomeframeConfig): void {
       || app.maskableIconPaddingRatio < 0
       || app.maskableIconPaddingRatio >= 0.5)) {
     errors.push('app.maskableIconPaddingRatio must be at least zero and less than 0.5.');
+  }
+  if (!app.maskableIcon && (app.maskableIconPaddingRatio !== undefined || app.maskableIconBackgroundColor !== undefined)) {
+    errors.push('app.maskableIconPaddingRatio and app.maskableIconBackgroundColor require app.maskableIcon.');
   }
   if (app.colorScheme && !['system', 'light', 'dark'].includes(app.colorScheme)) {
     errors.push('app.colorScheme must be system, light, or dark.');

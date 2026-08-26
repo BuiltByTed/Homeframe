@@ -26,7 +26,7 @@ const config = defineHomeframe({
 });
 
 describe('manifest generation', () => {
-  it('emits stable identity and required any/maskable icons', () => {
+  it('emits stable identity and required any icons without forcing a platform mask', () => {
     const manifest = createManifest(config, '/');
     expect(manifest).toMatchObject({
       id: '/',
@@ -38,9 +38,37 @@ describe('manifest generation', () => {
     expect(manifest.icons).toEqual(expect.arrayContaining([
       expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
       expect.objectContaining({ sizes: '512x512', purpose: 'any' }),
-      expect.objectContaining({ sizes: '192x192', purpose: 'maskable' }),
-      expect.objectContaining({ sizes: '512x512', purpose: 'maskable' }),
     ]));
+    expect(manifest.icons).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ purpose: 'maskable' }),
+    ]));
+  });
+
+  it('emits maskable metadata and assets only when explicitly configured', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'homeframe-maskable-opt-in-'));
+    try {
+      await writeFile(join(root, 'icon.svg'), `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+          <rect width="100" height="100" fill="#112233" />
+        </svg>
+      `);
+      const optedIn = {
+        ...config,
+        app: { ...config.app, icon: './icon.svg', maskableIcon: './icon.svg' },
+      };
+      const manifest = createManifest(optedIn, '/');
+      expect(manifest.icons).toEqual(expect.arrayContaining([
+        expect.objectContaining({ sizes: '192x192', purpose: 'maskable' }),
+        expect.objectContaining({ sizes: '512x512', purpose: 'maskable' }),
+      ]));
+      const generated = await generateAssets(optedIn, root, '/');
+      expect(generated.assets.map((asset) => asset.fileName)).toEqual(expect.arrayContaining([
+        'generated/icon-maskable-192.png',
+        'generated/icon-maskable-512.png',
+      ]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('renders maskable icons on an opaque brand canvas instead of the launch background', async () => {
@@ -58,6 +86,7 @@ describe('manifest generation', () => {
           themeColor: '#123456',
           backgroundColor: '#ffffff',
           icon: './icon.svg',
+          maskableIcon: './icon.svg',
         },
       }, root, '/');
       const maskable = generated.assets.find((asset) =>
@@ -107,13 +136,14 @@ describe('manifest generation', () => {
       ...config,
       app: {
         ...config.app,
+        maskableIcon: './icon.svg',
         maskableIconPaddingRatio: 0,
         maskableIconBackgroundColor: '#09090b',
       },
     })).not.toThrow();
     expect(() => validateConfig({
       ...config,
-      app: { ...config.app, maskableIconPaddingRatio: 0.5 },
+      app: { ...config.app, maskableIcon: './icon.svg', maskableIconPaddingRatio: 0.5 },
     })).toThrow(/maskableIconPaddingRatio/);
   });
 
