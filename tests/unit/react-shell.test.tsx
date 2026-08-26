@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   AppScrollView,
+  AppHeader,
   AppShell,
   AppSidebarLabel,
   AppViewport,
@@ -74,6 +75,16 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-scroll-view]')).toHaveTextContent('Content');
     expect(container.querySelector('[data-hf-dock]')).toHaveTextContent('Bottom');
     expect(container.querySelector('[data-hf-portals]')).not.toBeNull();
+  });
+
+  it('remeasures safe-area-backed regions when viewport geometry changes', () => {
+    const { container } = render(<AppHeader>Header</AppHeader>);
+    const header = container.querySelector<HTMLElement>('[data-hf-header]')!;
+    Object.defineProperty(header, 'offsetHeight', { configurable: true, value: 116 });
+
+    window.dispatchEvent(new CustomEvent('homeframe:viewport-change'));
+
+    expect(document.documentElement.style.getPropertyValue('--hf-header-height')).toBe('116px');
   });
 
   it('combines overlay placement with keyboard avoidance', () => {

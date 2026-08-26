@@ -382,8 +382,15 @@ function useMeasuredCssVariable(variable: string): MutableRefObject<HTMLElement 
     update();
     const observer = new ResizeObserver(update);
     observer.observe(element);
+    // WebKit does not consistently deliver ResizeObserver entries when an
+    // element's border box changes only because a root custom property used by
+    // env(safe-area-inset-*) changed during standalone cold launch. The
+    // viewport runtime has already committed those variables when it emits
+    // this event, so remeasure every framework-owned region in that pass.
+    window.addEventListener('homeframe:viewport-change', update);
     return () => {
       observer.disconnect();
+      window.removeEventListener('homeframe:viewport-change', update);
       getHomeframeRootStyle().setProperty(variable, '0px');
     };
   }, [variable]);
