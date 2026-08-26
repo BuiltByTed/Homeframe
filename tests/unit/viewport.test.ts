@@ -598,7 +598,7 @@ describe('ViewportController', () => {
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
-  it('treats skipped opening and closing frames as native geometry without fallback easing', async () => {
+  it('eases a skipped opening jump but paints a skipped closing jump immediately', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
     const controller = new ViewportController({ settleDelaysMs: [1, 2] });
@@ -617,7 +617,7 @@ describe('ViewportController', () => {
     await vi.waitFor(() => {
       expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
     });
-    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
+    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('fallback');
 
     input.blur();
     viewport.height = 844;

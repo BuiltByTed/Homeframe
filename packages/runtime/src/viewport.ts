@@ -854,11 +854,18 @@ export class ViewportController {
     if (keyboardDelta > 0.5) {
       const geometryDriven = candidate.keyboard.source !== 'none'
         || this.snapshot.keyboard.source !== 'none';
-      // WebKit may omit intermediate VisualViewport events, especially on
-      // keyboard close. A large observed jump is still native geometry and
-      // must paint immediately; replaying it through the fallback CSS curve
-      // makes an avoiding attachment visibly trail the dismissed keyboard.
-      this.keyboardMotion = geometryDriven ? 'tracking' : 'fallback';
+      const maximumTrackingStep = Math.max(40, stableHeight * 0.08);
+      // Follow native intermediate frames directly. If WebKit skips the
+      // opening frames and publishes the final keyboard geometry in one large
+      // jump, let the dock replay that opening through Homeframe's curve so it
+      // visibly travels with the keyboard instead of teleporting. Closing is
+      // always painted immediately: easing a skipped closing jump makes the
+      // attachment trail a keyboard that is already gone.
+      const skippedOpeningFrames = candidate.keyboard.phase === 'opening'
+        && keyboardDelta > maximumTrackingStep;
+      this.keyboardMotion = geometryDriven && !skippedOpeningFrames
+        ? 'tracking'
+        : 'fallback';
     }
     this.snapshot = { ...candidate, revision: this.snapshot.revision + 1 };
     if (this.snapshot.keyboard.phase === 'closed' && !this.focusedEditable) {
