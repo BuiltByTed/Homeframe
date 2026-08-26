@@ -45,6 +45,10 @@ export interface HomeframeAppConfig {
   colorScheme?: 'system' | 'light' | 'dark';
   icon: string;
   maskableIcon?: string;
+  /** Fraction of each edge reserved around maskable artwork. Defaults to the portable 21.72% safe-circle inset. */
+  maskableIconPaddingRatio?: number;
+  /** Opaque canvas behind maskable artwork. Defaults to app.backgroundColor. */
+  maskableIconBackgroundColor?: string;
   appleTouchIcon?: string;
   lang?: string;
   categories?: string[];

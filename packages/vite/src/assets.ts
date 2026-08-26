@@ -87,6 +87,8 @@ export async function generateAssets(
   const splashLogo = config.splash?.logo
     ? await readFile(sourcePath(root, config.splash.logo))
     : icon;
+  const maskablePadding = config.app.maskableIconPaddingRatio ?? 0.2172;
+  const maskableBackground = config.app.maskableIconBackgroundColor ?? config.app.backgroundColor;
   const assets: GeneratedHomeframeAsset[] = [];
 
   const addIcon = async (
@@ -110,10 +112,11 @@ export async function generateAssets(
   await Promise.all([
     addIcon('generated/icon-192.png', icon, 192, 'manifest any'),
     addIcon('generated/icon-512.png', icon, 512, 'manifest any'),
-    // A centered square that is 56.56% of the canvas fits wholly within the
-    // standardized 40%-radius maskable safe circle. The full canvas is opaque,
-    // so no source artwork is silently cropped by the platform mask.
-    addIcon('generated/icon-maskable-512.png', maskable, 512, 'manifest maskable; content contained in safe circle', 0.2172, config.app.backgroundColor),
+    // The default centered square is 56.56% of the canvas, fitting wholly in
+    // the standardized 40%-radius maskable safe circle. Apps whose source is
+    // already an adaptive/full-bleed composition can explicitly reduce the
+    // inset so the operating system does not display a redundant outer frame.
+    addIcon('generated/icon-maskable-512.png', maskable, 512, `manifest maskable; ${Math.round(maskablePadding * 100)}% edge inset`, maskablePadding, maskableBackground),
     addIcon('generated/apple-touch-icon.png', appleTouchIcon, 180, 'Apple touch icon'),
     addIcon('generated/favicon-32.png', icon, 32, 'favicon'),
     addIcon('generated/notification-icon.png', icon, 192, 'notification icon'),

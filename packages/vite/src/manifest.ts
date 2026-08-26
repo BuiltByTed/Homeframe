@@ -64,6 +64,12 @@ export function validateConfig(config: HomeframeConfig): void {
   if (!app.scope) errors.push('app.scope is required.');
   if (!app.startUrl) errors.push('app.startUrl is required.');
   if (!app.icon) errors.push('app.icon is required.');
+  if (app.maskableIconPaddingRatio !== undefined
+    && (!Number.isFinite(app.maskableIconPaddingRatio)
+      || app.maskableIconPaddingRatio < 0
+      || app.maskableIconPaddingRatio >= 0.5)) {
+    errors.push('app.maskableIconPaddingRatio must be at least zero and less than 0.5.');
+  }
   if (app.colorScheme && !['system', 'light', 'dark'].includes(app.colorScheme)) {
     errors.push('app.colorScheme must be system, light, or dark.');
   }
@@ -95,6 +101,7 @@ export function validateConfig(config: HomeframeConfig): void {
     backgroundColor: app.backgroundColor,
     themeColorDark: app.themeColorDark,
     backgroundColorDark: app.backgroundColorDark,
+    maskableIconBackgroundColor: app.maskableIconBackgroundColor,
   })) {
     if (color && !/^#[0-9a-f]{6}(?:ff)?$/i.test(color)) {
       errors.push(`app.${key} must be an opaque six-digit hex color.`);

@@ -68,6 +68,21 @@ describe('manifest generation', () => {
     } as never)).toThrow(/colorScheme must be system, light, or dark/);
   });
 
+  it('accepts full-bleed maskable artwork and rejects impossible insets', () => {
+    expect(() => validateConfig({
+      ...config,
+      app: {
+        ...config.app,
+        maskableIconPaddingRatio: 0,
+        maskableIconBackgroundColor: '#09090b',
+      },
+    })).not.toThrow();
+    expect(() => validateConfig({
+      ...config,
+      app: { ...config.app, maskableIconPaddingRatio: 0.5 },
+    })).toThrow(/maskableIconPaddingRatio/);
+  });
+
   it('validates the keyboard occlusion presentation policy', () => {
     expect(() => validateConfig({
       ...config,
