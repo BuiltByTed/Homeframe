@@ -36,6 +36,7 @@ test('paints a contained shell with safe header, scroll root, and bottom dock', 
     const dock = document.querySelector('[data-hf-dock]')!.getBoundingClientRect();
     const viewport = document.querySelector('[data-hf-viewport]')!.getBoundingClientRect();
     return {
+      viewportOwner: document.documentElement.dataset.hfViewportOwner,
       windowScrollY: window.scrollY,
       headerTop: header.top,
       dockBottom: dock.bottom,
@@ -50,6 +51,7 @@ test('paints a contained shell with safe header, scroll root, and bottom dock', 
       bottomBackground: getComputedStyle(document.querySelector('.bottom-nav')!).backgroundColor,
     };
   });
+  expect(layout.viewportOwner).toBe('runtime');
   expect(layout.windowScrollY).toBe(0);
   expect(Math.abs(layout.headerTop - layout.viewportTop)).toBeLessThanOrEqual(1);
   expect(Math.abs(layout.dockBottom - layout.viewportBottom)).toBeLessThanOrEqual(1);
@@ -125,11 +127,18 @@ test('uses 16px inputs, keeps the document fixed, and attaches composer above bo
     root.dataset.hfDisplayMode = 'standalone';
     root.dataset.hfKeyboardMotion = 'tracking';
     delete root.dataset.hfKeyboardTuning;
-    const style = getComputedStyle(element);
-    const result = {
-      duration: style.transitionDuration,
-      delay: style.transitionDelay,
-      easing: style.transitionTimingFunction,
+    const trackingStyle = getComputedStyle(element);
+    const tracking = {
+      duration: trackingStyle.transitionDuration,
+      delay: trackingStyle.transitionDelay,
+      easing: trackingStyle.transitionTimingFunction,
+    };
+    root.dataset.hfKeyboardMotion = 'fallback';
+    const fallbackStyle = getComputedStyle(element);
+    const fallback = {
+      duration: fallbackStyle.transitionDuration,
+      delay: fallbackStyle.transitionDelay,
+      easing: fallbackStyle.transitionTimingFunction,
     };
     if (previousDisplayMode === undefined) delete root.dataset.hfDisplayMode;
     else root.dataset.hfDisplayMode = previousDisplayMode;
@@ -137,11 +146,13 @@ test('uses 16px inputs, keeps the document fixed, and attaches composer above bo
     else root.dataset.hfKeyboardMotion = previousKeyboardMotion;
     if (previousTuning === undefined) delete root.dataset.hfKeyboardTuning;
     else root.dataset.hfKeyboardTuning = previousTuning;
-    return result;
+    return { tracking, fallback };
   });
-  expect(dockTransition.duration).toContain('0.32s');
-  expect(dockTransition.delay).toContain('0s');
-  expect(dockTransition.easing).toContain('cubic-bezier(0.32, 0.27, 0, 1)');
+  expect(dockTransition.tracking.duration.split(',').every(value => Number.parseFloat(value) === 0)).toBe(true);
+  expect(dockTransition.tracking.delay).toContain('0s');
+  expect(dockTransition.fallback.duration).toContain('0.32s');
+  expect(dockTransition.fallback.delay).toContain('0s');
+  expect(dockTransition.fallback.easing).toContain('cubic-bezier(0.32, 0.27, 0, 1)');
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 

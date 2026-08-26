@@ -190,7 +190,14 @@ export class ViewportController {
 
     this.abortController = new AbortController();
     const { signal } = this.abortController;
-    document.documentElement.dataset.hfKeyboardOcclusion = this.options.keyboardOcclusion;
+    const root = document.documentElement;
+    // The inline bootstrap owns viewport variables only until the full
+    // controller starts. This lifetime claim is intentionally not released on
+    // stop: bootstrap listeners remain installed for the document lifetime and
+    // must never race a restarted React/runtime tree (including StrictMode,
+    // hot updates, and service-worker bundle replacement).
+    root.dataset.hfViewportOwner = 'runtime';
+    root.dataset.hfKeyboardOcclusion = this.options.keyboardOcclusion;
     this.createSafeAreaProbe();
 
     const schedule = () => this.scheduleMeasure();
@@ -728,9 +735,14 @@ export class ViewportController {
       this.lastCandidate = null;
       this.installedFrameInset = 0;
     }
-    this.installedFrameInset = Math.max(
-      this.installedFrameInset,
-      this.detectInstalledFrameInset(layoutHeight, rawSafeArea.top),
+    // WebKit can initially expose only the content frame of a translucent
+    // standalone scene and then expand the layout viewport to the full screen.
+    // The inset describes the current layout frame, not a lifetime maximum:
+    // retaining the startup value after that expansion double-counts safeTop
+    // and pushes bottom UI below the physical screen.
+    this.installedFrameInset = this.detectInstalledFrameInset(
+      layoutHeight,
+      rawSafeArea.top,
     );
     const physicalFrameHeight = this.layoutViewportHeight(layoutHeight)
       + this.installedFrameInset;
@@ -842,10 +854,11 @@ export class ViewportController {
     if (keyboardDelta > 0.5) {
       const geometryDriven = candidate.keyboard.source !== 'none'
         || this.snapshot.keyboard.source !== 'none';
-      const maximumTrackingStep = Math.max(40, stableHeight * 0.08);
-      this.keyboardMotion = geometryDriven && keyboardDelta <= maximumTrackingStep
-        ? 'tracking'
-        : 'fallback';
+      // WebKit may omit intermediate VisualViewport events, especially on
+      // keyboard close. A large observed jump is still native geometry and
+      // must paint immediately; replaying it through the fallback CSS curve
+      // makes an avoiding attachment visibly trail the dismissed keyboard.
+      this.keyboardMotion = geometryDriven ? 'tracking' : 'fallback';
     }
     this.snapshot = { ...candidate, revision: this.snapshot.revision + 1 };
     if (this.snapshot.keyboard.phase === 'closed' && !this.focusedEditable) {
@@ -871,18 +884,23 @@ export class ViewportController {
     const visualRight = snapshot.x + snapshot.width;
     const visualBottom = snapshot.y + snapshot.height;
     // Installed apps keep one immutable shell rectangle for their entire
-    // lifetime. Only ViewportDock tracks keyboard height; resizing the shell
-    // itself makes WebKit composite transient copies of the header during the
-    // keyboard animation.
+    // lifetime. A browser tab must do the same while a dock-owned field has
+    // the keyboard: the manual navigation dock belongs to the stable layout
+    // viewport (and is covered by the keyboard), while its avoiding attachment
+    // follows VisualViewport. Shrinking the shell in that state makes mobile
+    // Safari lift the navigation row above the keyboard and place it on top of
+    // the attachment.
     const useStableInstalledGeometry = snapshot.displayMode !== 'browser'
       && snapshot.displayMode !== 'unknown';
+    const useStableDockGeometry = this.keyboardTarget === 'dock';
+    const useStableShellGeometry = useStableInstalledGeometry || useStableDockGeometry;
     style.setProperty(
       '--hf-shell-width',
-      px(useStableInstalledGeometry ? Math.max(snapshot.stableWidth, visualRight) : visualRight),
+      px(useStableShellGeometry ? Math.max(snapshot.stableWidth, visualRight) : visualRight),
     );
     style.setProperty(
       '--hf-shell-height',
-      px(useStableInstalledGeometry ? Math.max(snapshot.stableHeight, visualBottom) : visualBottom),
+      px(useStableShellGeometry ? Math.max(snapshot.stableHeight, visualBottom) : visualBottom),
     );
     style.setProperty('--hf-stable-width', px(snapshot.stableWidth));
     style.setProperty('--hf-stable-height', px(snapshot.stableHeight));

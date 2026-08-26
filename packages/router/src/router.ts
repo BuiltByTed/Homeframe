@@ -778,7 +778,14 @@ export class HomeframeRouter {
     if (this.edgeGesture !== gesture) return;
     if (shouldCommit) {
       await this.traverseManagedHistory(gesture.targetPosition, gesture.direction);
+      // `resolve` publishes synchronously, but UI frameworks still need a paint
+      // to mount the live destination. Keep the already-visible destination
+      // snapshot in place through that handoff so decoded media/layout cannot
+      // flash back to their initial state when the gesture completes.
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+      await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     }
+    if (this.edgeGesture !== gesture) return;
     this.resetEdgeGesture();
   }
 

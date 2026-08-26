@@ -114,6 +114,25 @@
     overflow: hidden;
   }
 
+  [data-hf-shell][data-hf-header-overlay='true'] {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  [data-hf-shell][data-hf-header-overlay='true'] > [data-hf-header] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+  }
+
+  [data-hf-shell][data-hf-header-overlay='true'] > [data-hf-content] {
+    grid-row: 1;
+  }
+
+  [data-hf-shell][data-hf-header-overlay='true'] > [data-hf-content] > [data-hf-scroll-view] {
+    padding-top: var(--hf-header-height);
+  }
+
   [data-hf-shell][data-hf-desktop-layout] {
     --hf-active-sidebar-width: var(--hf-sidebar-width);
     transition: grid-template-columns 240ms cubic-bezier(.22, 1, .36, 1);
@@ -215,6 +234,18 @@
         'header content'
         'sidebar content'
         'sidebar bottom';
+    }
+
+    [data-hf-shell][data-hf-desktop-layout][data-hf-header-overlay='true'] {
+      grid-template-rows: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'sidebar content'
+        'sidebar bottom';
+    }
+
+    [data-hf-shell][data-hf-desktop-layout][data-hf-header-overlay='true'][data-hf-header-placement='content']
+      > [data-hf-header] {
+      left: var(--hf-active-sidebar-width);
     }
 
     [data-hf-shell][data-hf-desktop-layout] > [data-hf-header] {
@@ -453,11 +484,7 @@
     transition: opacity 120ms ease;
   }
 
-  :root:is(
-    [data-hf-display-mode='standalone'],
-    [data-hf-display-mode='fullscreen'],
-    [data-hf-display-mode='minimal-ui']
-  ) :is(
+  :is(
     [data-hf-dock],
     [data-hf-viewport-attachment][data-hf-attachment-anchor='dock']
   )[data-keyboard-policy='avoid'] {
@@ -466,6 +493,16 @@
       transform var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay),
       padding-bottom var(--hf-dock-keyboard-transition-duration) var(--hf-dock-keyboard-transition-easing) var(--hf-dock-keyboard-transition-delay);
     will-change: transform;
+  }
+
+  /* VisualViewport already publishes every native keyboard-animation frame.
+   * Re-animating each measured transform makes an avoiding attachment trail
+   * the closing keyboard. Only fallback jumps use the synthetic transition. */
+  :root[data-hf-keyboard-motion='tracking'] :is(
+    [data-hf-dock],
+    [data-hf-viewport-attachment][data-hf-attachment-anchor='dock']
+  )[data-keyboard-policy='avoid'] {
+    transition-duration: 0ms;
   }
 
   :root:not([data-hf-keyboard='closed']) :is(

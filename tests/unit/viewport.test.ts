@@ -69,7 +69,9 @@ describe('ViewportController', () => {
     });
     expect(document.documentElement.style.getPropertyValue('--hf-viewport-height')).toBe('844px');
     expect(document.documentElement.dataset.hfKeyboard).toBe('closed');
+    expect(document.documentElement.dataset.hfViewportOwner).toBe('runtime');
     controller.stop();
+    expect(document.documentElement.dataset.hfViewportOwner).toBe('runtime');
   });
 
   it('publishes and removes the configured keyboard occlusion policy', () => {
@@ -202,6 +204,35 @@ describe('ViewportController', () => {
 
     expect(controller.getSnapshot().stableHeight).toBe(screenHeight);
     expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe(`${screenHeight}px`);
+    controller.stop();
+    safeArea.mockRestore();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it('does not retain the translucent scene inset after WebKit expands to the full screen', async () => {
+    const viewport = installViewport();
+    viewport.height = 812;
+    Object.defineProperty(window, 'innerHeight', { value: 812, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 874, configurable: true });
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const safeArea = mockSafeAreaTop(62);
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    controller.start();
+
+    expect(controller.getSnapshot().stableHeight).toBe(874);
+
+    Object.defineProperty(window, 'innerHeight', { value: 874, configurable: true });
+    viewport.height = 874;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(controller.getSnapshot()).toMatchObject({
+      height: 874,
+      stableHeight: 874,
+      keyboard: { phase: 'closed', height: 0 },
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('874px');
     controller.stop();
     safeArea.mockRestore();
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
@@ -483,6 +514,45 @@ describe('ViewportController', () => {
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 
+  it('keeps a Safari browser shell stable while a dock attachment follows the keyboard', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    shell.dataset.hfBottomKeyboardPolicy = 'manual';
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    dock.dataset.keyboardPolicy = 'manual';
+    const attachment = document.createElement('div');
+    attachment.dataset.hfViewportAttachment = '';
+    attachment.dataset.hfAttachmentAnchor = 'dock';
+    attachment.dataset.keyboardPolicy = 'avoid';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    attachment.append(input);
+    shell.append(attachment, dock);
+    document.body.append(shell);
+    controller.start();
+
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('844px');
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+    });
+
+    expect(controller.getSnapshot()).toMatchObject({
+      displayMode: 'browser',
+      height: 500,
+      stableHeight: 844,
+      keyboard: { height: 344 },
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-shell-height')).toBe('844px');
+    controller.stop();
+  });
+
   it('tracks intermediate keyboard geometry directly instead of applying a second easing curve', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
@@ -516,6 +586,39 @@ describe('ViewportController', () => {
     expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
     controller.stop();
     safeArea.mockRestore();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+  });
+
+  it('treats skipped opening and closing frames as native geometry without fallback easing', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const attachment = document.createElement('div');
+    attachment.dataset.hfViewportAttachment = '';
+    attachment.dataset.hfAttachmentAnchor = 'dock';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    attachment.append(input);
+    document.body.append(attachment);
+    controller.start();
+
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+    });
+    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
+
+    input.blur();
+    viewport.height = 844;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('0px');
+    });
+    expect(controller.getSnapshot().keyboard.phase).toBe('closed');
+    expect(document.documentElement.dataset.hfKeyboardMotion).toBe('tracking');
+    controller.stop();
     Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
   });
 

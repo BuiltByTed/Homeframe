@@ -67,6 +67,7 @@ describe('React shell primitives', () => {
             header={<div>Header</div>}
             headerAttachment={<div>Video</div>}
             bottom={<div>Navigation</div>}
+            bottomKeyboard="manual"
             bottomAttachment={<div>Search</div>}
             bottomAttachmentKeyboard="avoid"
           >
@@ -77,6 +78,10 @@ describe('React shell primitives', () => {
     );
     const attachments = container.querySelectorAll('[data-hf-viewport-attachment]');
     expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'true');
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute(
+      'data-hf-bottom-keyboard-policy',
+      'manual',
+    );
     expect(attachments).toHaveLength(2);
     expect(attachments[0]).toHaveAttribute('data-hf-attachment-anchor', 'header');
     expect(attachments[0]).toHaveAttribute('data-keyboard-policy', 'manual');

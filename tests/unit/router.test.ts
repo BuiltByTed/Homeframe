@@ -226,6 +226,12 @@ describe('HomeframeRouter', () => {
     router.start();
     await router.navigate('/items/1');
     const phases: string[] = [];
+    let destinationPublishedUnderPreview = false;
+    const unsubscribeRouter = router.subscribe(() => {
+      if (router.getSnapshot().url.pathname === '/') {
+        destinationPublishedUnderPreview = Boolean(document.querySelector('[data-hf-edge-preview]'));
+      }
+    });
     const unsubscribe = router.subscribeNavigationGesture(() => {
       phases.push(router.getNavigationGestureSnapshot().phase);
     });
@@ -237,8 +243,10 @@ describe('HomeframeRouter', () => {
     await new Promise(resolve => setTimeout(resolve, 240));
 
     expect(phases).toEqual(expect.arrayContaining(['tracking', 'committing', 'idle']));
+    expect(destinationPublishedUnderPreview).toBe(true);
     expect(router.getSnapshot().url.pathname).toBe('/');
     expect(router.getNavigationGestureSnapshot().phase).toBe('idle');
+    unsubscribeRouter();
     unsubscribe();
     router.stop();
   });

@@ -17,6 +17,8 @@ describe('runtime structural CSS', () => {
   it('keeps dock placement independent from keyboard avoidance', () => {
     expect(styles).toMatch(/\[data-hf-dock\]:is\([^)]*\[data-hf-dock-placement='overlay'\][^)]*\)[^{]*\{[^}]*position:\s*fixed/s);
     expect(styles).toMatch(/:is\([^)]*\[data-hf-dock\][^)]*data-hf-attachment-anchor='dock'[^)]*\)\[data-keyboard-policy='avoid'\]\s*\{[^}]*var\(--hf-dock-keyboard-offset\)/s);
+    expect(styles).toMatch(/data-hf-keyboard-motion='tracking'[\s\S]*data-keyboard-policy='avoid'[\s\S]*transition-duration:\s*0ms/);
+    expect(styles).toMatch(/data-hf-header-overlay='true'[\s\S]*padding-top:\s*var\(--hf-header-height\)/);
   });
 
   it('positions measured viewport attachments without visual styling', () => {

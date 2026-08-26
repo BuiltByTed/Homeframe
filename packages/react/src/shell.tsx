@@ -47,6 +47,8 @@ export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
   as?: ElementType;
   contentAs?: ElementType;
   header?: ReactNode;
+  /** Overlays the measured header while scroll content starts beneath it and can move behind it. */
+  headerOverlay?: boolean;
   /** Viewport-attached content below the measured header; route content scrolls behind it. */
   headerAttachment?: ReactNode;
   bottom?: ReactNode;
@@ -181,6 +183,7 @@ export function AppShell({
   as = 'div',
   contentAs = 'main',
   header,
+  headerOverlay = false,
   headerAttachment,
   bottom,
   bottomAttachment,
@@ -289,8 +292,10 @@ export function AppShell({
       'data-hf-desktop-layout': desktopLayout || undefined,
       'data-hf-sidebar-mode': desktopLayout ? mode : undefined,
       'data-hf-header-placement': desktopLayout ? headerPlacement : undefined,
+      'data-hf-header-overlay': headerOverlay || undefined,
       'data-hf-mobile-sidebar-open': desktopLayout ? String(mobileOpen) : undefined,
       'data-hf-has-dock': bottom == null ? 'false' : 'true',
+      'data-hf-bottom-keyboard-policy': dockPolicy,
     },
     header == null && !desktopLayout
       ? <div />
