@@ -156,6 +156,36 @@ test('uses 16px inputs, keeps the document fixed, and attaches composer above bo
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 
+test('an avoiding composer follows the keyboard while a manual dock stays covered', async ({ page }) => {
+  await navigateFromShell(page, /Keyboard/);
+  const geometry = await page.evaluate(() => {
+    const root = document.documentElement;
+    const shell = document.querySelector<HTMLElement>('[data-hf-shell]')!;
+    const dock = document.querySelector<HTMLElement>('[data-hf-dock]')!;
+    const attachment = document.querySelector<HTMLElement>(
+      '[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]',
+    )!;
+    root.dataset.hfDisplayMode = 'standalone';
+    root.dataset.hfKeyboard = 'open';
+    root.dataset.hfKeyboardTarget = 'dock';
+    root.style.setProperty('--hf-dock-keyboard-offset', '280px');
+    shell.dataset.hfBottomKeyboardPolicy = 'manual';
+    dock.dataset.keyboardPolicy = 'manual';
+    attachment.dataset.keyboardPolicy = 'avoid';
+    attachment.style.transition = 'none';
+    const attachmentStyle = getComputedStyle(attachment);
+    const dockStyle = getComputedStyle(dock);
+    return {
+      attachmentBottom: attachmentStyle.bottom,
+      attachmentTransform: attachmentStyle.transform,
+      dockTransform: dockStyle.transform,
+    };
+  });
+  expect(geometry.attachmentBottom).toBe('0px');
+  expect(geometry.attachmentTransform).toContain('-280');
+  expect(geometry.dockTransform).toBe('none');
+});
+
 test('keyboard page tunes the real sticky composer with copyable curve values', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   await page.getByRole('button', { name: 'System ease' }).click();

@@ -295,7 +295,7 @@ export function AppShell({
       'data-hf-header-overlay': headerOverlay || undefined,
       'data-hf-mobile-sidebar-open': desktopLayout ? String(mobileOpen) : undefined,
       'data-hf-has-dock': bottom == null ? 'false' : 'true',
-      'data-hf-bottom-keyboard-policy': dockPolicy,
+      'data-hf-bottom-keyboard-policy': bottom == null ? undefined : dockPolicy,
     },
     header == null && !desktopLayout
       ? <div />

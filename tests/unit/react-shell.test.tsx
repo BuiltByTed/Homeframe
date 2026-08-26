@@ -15,6 +15,7 @@ import {
   ViewportAttachment,
   useAppSidebar,
   useHomeframeReadiness,
+  useHomeframeLogout,
   useHomeframeUpdate,
   useNudgeCoordinator,
 } from '@builtbyted/react';
@@ -33,6 +34,31 @@ beforeEach(() => {
 });
 
 describe('React shell primitives', () => {
+  it('completes logout cleanup when no service-worker registration exists', async () => {
+    const getRegistration = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { getRegistration },
+    });
+    function LogoutHarness() {
+      const logout = useHomeframeLogout();
+      const [complete, setComplete] = useState(false);
+      return (
+        <button type="button" onClick={() => void logout().then(() => setComplete(true))}>
+          {complete ? 'Complete' : 'Log out'}
+        </button>
+      );
+    }
+    render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <LogoutHarness />
+      </HomeframeProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Complete' })).toBeVisible());
+    expect(getRegistration).toHaveBeenCalledOnce();
+  });
+
   it('renders the fixed shell regions and portal root', () => {
     const { container } = render(
       <HomeframeProvider config={{ serviceWorker: false }}>
@@ -67,7 +93,6 @@ describe('React shell primitives', () => {
             header={<div>Header</div>}
             headerAttachment={<div>Video</div>}
             bottom={<div>Navigation</div>}
-            bottomKeyboard="manual"
             bottomAttachment={<div>Search</div>}
             bottomAttachmentKeyboard="avoid"
           >
@@ -80,13 +105,38 @@ describe('React shell primitives', () => {
     expect(container.querySelector('[data-hf-shell]')).toHaveAttribute('data-hf-has-dock', 'true');
     expect(container.querySelector('[data-hf-shell]')).toHaveAttribute(
       'data-hf-bottom-keyboard-policy',
-      'manual',
+      'avoid',
     );
     expect(attachments).toHaveLength(2);
     expect(attachments[0]).toHaveAttribute('data-hf-attachment-anchor', 'header');
     expect(attachments[0]).toHaveAttribute('data-keyboard-policy', 'manual');
     expect(attachments[1]).toHaveAttribute('data-hf-attachment-anchor', 'dock');
     expect(attachments[1]).toHaveAttribute('data-keyboard-policy', 'avoid');
+  });
+
+  it('exposes a keyboard-covered dock policy for independently avoiding attachments', () => {
+    const { container } = render(
+      <HomeframeProvider config={{ serviceWorker: false }}>
+        <AppViewport>
+          <AppShell
+            bottom={<nav>Navigation</nav>}
+            bottomKeyboard="manual"
+            bottomAttachment={<input aria-label="Composer" />}
+            bottomAttachmentKeyboard="avoid"
+          >
+            Content
+          </AppShell>
+        </AppViewport>
+      </HomeframeProvider>,
+    );
+    expect(container.querySelector('[data-hf-shell]')).toHaveAttribute(
+      'data-hf-bottom-keyboard-policy',
+      'manual',
+    );
+    expect(container.querySelector('[data-hf-dock]')).toHaveAttribute(
+      'data-keyboard-policy',
+      'manual',
+    );
   });
 
   it('marks when a bottom attachment must own the safe bottom', () => {

@@ -33,6 +33,39 @@ const initialSnapshot: ServiceWorkerSnapshot = {
   state: 'idle',
 };
 
+const UPDATE_RELOAD_MARKER_MAX_AGE_MS = 15_000;
+
+function updateReloadMarkerKey(scope: string): string {
+  return `hf:update-reload:${scope.replace(/[^a-zA-Z0-9_-]+/g, '-') || 'app'}`;
+}
+
+function readRecentUpdateReload(scope: string): boolean {
+  try {
+    const value = Number(sessionStorage.getItem(updateReloadMarkerKey(scope)));
+    return Number.isFinite(value) && value > 0
+      && Date.now() - value <= UPDATE_RELOAD_MARKER_MAX_AGE_MS;
+  } catch {
+    return false;
+  }
+}
+
+function reloadViewportIsClosed(): boolean {
+  const root = document.documentElement;
+  if (root.dataset.hfKeyboard !== 'closed') return false;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active.matches(
+    'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+  )) return false;
+  const visual = window.visualViewport;
+  const scale = visual?.scale ?? 1;
+  const visualBottom = (visual?.height ?? window.innerHeight) + (visual?.offsetTop ?? 0);
+  if (scale > 1.01 || Math.abs(visualBottom - window.innerHeight) > 2) return false;
+  if ((visual?.pageTop ?? 0) > 1 || window.scrollY !== 0) return false;
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const screenGap = window.screen.height - window.innerHeight;
+  return !standalone || window.screen.height <= 0 || screenGap <= 96;
+}
+
 export class HomeframeServiceWorkerClient {
   private config: Required<ServiceWorkerClientConfig>;
   private snapshot: ServiceWorkerSnapshot = initialSnapshot;
@@ -55,6 +88,7 @@ export class HomeframeServiceWorkerClient {
   private activationLeaseKey = '';
   private peerSafeStates = new Map<string, PeerSafeState>();
   private initialPresentationPending: boolean;
+  private updateReloadRestorePending: boolean;
 
   constructor(config: ServiceWorkerClientConfig = {}) {
     this.config = {
@@ -69,6 +103,7 @@ export class HomeframeServiceWorkerClient {
       reloadOnActivate: config.reloadOnActivate ?? true,
     };
     this.initialPresentationPending = this.config.mode === 'automatic' && this.config.checkOnLaunch;
+    this.updateReloadRestorePending = readRecentUpdateReload(this.config.scope);
   }
 
   getSnapshot = (): ServiceWorkerSnapshot => this.snapshot;
@@ -79,6 +114,13 @@ export class HomeframeServiceWorkerClient {
   };
   /** True while an automatic launch update must finish behind the boot splash. */
   shouldHoldInitialPresentation = (): boolean => this.initialPresentationPending;
+  /** True when the new document must prove stable viewport geometry before presentation. */
+  shouldStabilizeUpdateReloadPresentation = (): boolean => this.updateReloadRestorePending;
+  completeUpdateReloadPresentation = (): void => {
+    this.updateReloadRestorePending = false;
+    try { sessionStorage.removeItem(updateReloadMarkerKey(this.config.scope)); }
+    catch { /* Session storage is optional. */ }
+  };
 
   async start(): Promise<() => void> {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
@@ -103,7 +145,7 @@ export class HomeframeServiceWorkerClient {
         currentBuild: await this.queryBuild(navigator.serviceWorker.controller),
       });
       this.observeRegistration(this.registration);
-      navigator.serviceWorker.addEventListener('controllerchange', () => this.onControllerChange(), {
+      navigator.serviceWorker.addEventListener('controllerchange', () => void this.onControllerChange(), {
         signal,
       });
       navigator.serviceWorker.addEventListener('message', (event) => this.onMessage(event), {
@@ -338,6 +380,7 @@ export class HomeframeServiceWorkerClient {
   private async isSafePoint(): Promise<boolean> {
     if (document.visibilityState !== 'visible') return false;
     if (document.documentElement.dataset.hfKeyboard !== 'closed') return false;
+    if (!reloadViewportIsClosed()) return false;
     if (document.documentElement.dataset.hfModal === 'open') return false;
     if (document.documentElement.dataset.hfPrompt === 'open') return false;
     if (document.documentElement.dataset.hfCriticalTask) return false;
@@ -355,7 +398,7 @@ export class HomeframeServiceWorkerClient {
     return true;
   }
 
-  private onControllerChange(): void {
+  private async onControllerChange(): Promise<void> {
     if (!this.hadControllerAtStart && this.snapshot.state !== 'activating') {
       this.hadControllerAtStart = true;
       void this.queryBuild(navigator.serviceWorker.controller).then((buildId) => {
@@ -374,7 +417,43 @@ export class HomeframeServiceWorkerClient {
     this.didReload = true;
     this.broadcastCoordination('current', this.snapshot.availableBuild);
     this.publish({ state: 'reloading' });
+    await this.prepareUpdateReload();
     window.location.reload();
+  }
+
+  private async prepareUpdateReload(): Promise<void> {
+    const root = document.documentElement;
+    root.dataset.hfUpdateReload = 'preparing';
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.matches(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"])',
+    )) active.blur();
+    if (window.scrollX !== 0 || window.scrollY !== 0) window.scrollTo(0, 0);
+
+    let stableFrames = 0;
+    let previous = '';
+    const deadline = performance.now() + 1_200;
+    while (performance.now() < deadline && stableFrames < 3) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const visual = window.visualViewport;
+      const signature = [
+        visual?.width ?? window.innerWidth,
+        visual?.height ?? window.innerHeight,
+        visual?.offsetTop ?? 0,
+        visual?.pageTop ?? 0,
+        visual?.scale ?? 1,
+        window.innerWidth,
+        window.innerHeight,
+      ].map((value) => Math.round(value * 10) / 10).join(':');
+      if (reloadViewportIsClosed() && signature === previous) stableFrames += 1;
+      else stableFrames = reloadViewportIsClosed() ? 1 : 0;
+      previous = signature;
+    }
+    try {
+      sessionStorage.setItem(updateReloadMarkerKey(this.config.scope), String(Date.now()));
+    } catch {
+      // The outgoing page still reloads safely when storage is unavailable.
+    }
   }
 
   private onMessage(event: MessageEvent): void {

@@ -68,6 +68,17 @@ describe('manifest generation', () => {
     } as never)).toThrow(/colorScheme must be system, light, or dark/);
   });
 
+  it('validates the keyboard occlusion presentation policy', () => {
+    expect(() => validateConfig({
+      ...config,
+      viewport: { keyboardOcclusion: 'transparent' },
+    })).not.toThrow();
+    expect(() => validateConfig({
+      ...config,
+      viewport: { keyboardOcclusion: 'blurred' },
+    } as never)).toThrow(/keyboardOcclusion must be opaque or transparent/);
+  });
+
   it('rejects unsafe worker paths, unbounded rules, and out-of-scope notification routes', () => {
     expect(() => validateConfig({
       ...config,

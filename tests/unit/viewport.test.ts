@@ -86,6 +86,15 @@ describe('ViewportController', () => {
     expect(document.documentElement.dataset.hfKeyboardOcclusion).toBeUndefined();
   });
 
+  it('publishes and cleans up the configured keyboard occlusion policy', () => {
+    installViewport();
+    const controller = new ViewportController({ keyboardOcclusion: 'transparent' });
+    controller.start();
+    expect(document.documentElement.dataset.hfKeyboardOcclusion).toBe('transparent');
+    controller.stop();
+    expect(document.documentElement.dataset.hfKeyboardOcclusion).toBeUndefined();
+  });
+
   it('detects the keyboard only with editable focus and a meaningful visual reduction', async () => {
     const viewport = installViewport();
     const controller = new ViewportController({ settleDelaysMs: [1, 2] });
