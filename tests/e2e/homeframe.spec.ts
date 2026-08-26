@@ -156,6 +156,67 @@ test('uses 16px inputs, keeps the document fixed, and attaches composer above bo
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 
+test('mobile floating windows track the live viewport and keyboard-safe bottom edge', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const geometry = await page.evaluate(() => {
+    const runtimeStyle = document.getElementById('homeframe-runtime-vars') as HTMLStyleElement;
+    const runtimeRule = runtimeStyle.sheet!.cssRules[0] as CSSStyleRule;
+    const variables = [
+      '--hf-viewport-x',
+      '--hf-viewport-y',
+      '--hf-viewport-width',
+      '--hf-viewport-height',
+      '--hf-safe-bottom',
+      '--hf-effective-safe-bottom',
+    ];
+    const previous = Object.fromEntries(
+      variables.map((name) => [name, runtimeRule.style.getPropertyValue(name)]),
+    );
+    runtimeRule.style.setProperty('--hf-viewport-x', '0px');
+    runtimeRule.style.setProperty('--hf-viewport-y', '120px');
+    runtimeRule.style.setProperty('--hf-viewport-width', '390px');
+    runtimeRule.style.setProperty('--hf-viewport-height', '500px');
+    runtimeRule.style.setProperty('--hf-safe-bottom', '34px');
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', '0px');
+
+    const layer = document.createElement('div');
+    layer.dataset.hfFloatingWindowLayer = '';
+    layer.dataset.hfFloatingMobile = 'fullscreen';
+    layer.dataset.hfFloatingPlacement = 'center';
+    const floatingWindow = document.createElement('section');
+    floatingWindow.dataset.hfFloatingWindow = '';
+    layer.append(floatingWindow);
+    document.body.append(layer);
+
+    const layerStyles = getComputedStyle(layer);
+    const windowStyles = getComputedStyle(floatingWindow);
+    const result = {
+      top: layerStyles.top,
+      width: layerStyles.width,
+      height: layerStyles.height,
+      paddingBottomWithKeyboard: windowStyles.paddingBottom,
+    };
+
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', '34px');
+    const paddingBottomWithoutKeyboard = getComputedStyle(floatingWindow).paddingBottom;
+    layer.remove();
+    for (const [name, value] of Object.entries(previous)) {
+      runtimeRule.style.setProperty(name, value);
+    }
+    return { ...result, paddingBottomWithoutKeyboard };
+  });
+
+  expect(geometry).toEqual({
+    top: '120px',
+    width: '390px',
+    height: '500px',
+    paddingBottomWithKeyboard: '0px',
+    paddingBottomWithoutKeyboard: '34px',
+  });
+});
+
 test('an avoiding composer follows the keyboard while a manual dock stays covered', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const geometry = await page.evaluate(() => {

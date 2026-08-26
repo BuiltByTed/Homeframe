@@ -49,6 +49,9 @@ describe('runtime structural CSS', () => {
     expect(styles).toMatch(/\[data-hf-shell\]\s*\{[^}]*z-index:\s*0/s);
     expect(styles).toMatch(/\[data-hf-floating-window-layer\]\s*\{[^}]*z-index:\s*1200[^}]*inset:\s*0/s);
     expect(styles).toMatch(/@media \(max-width: 900px\)[\s\S]*data-hf-floating-mobile='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*width:\s*100%[^}]*height:\s*100%/s);
+    expect(styles).toMatch(/data-hf-floating-window-layer\]:is\([\s\S]*data-hf-floating-mobile='fullscreen'[\s\S]*\)\s*\{[^}]*top:\s*var\(--hf-viewport-y\)[^}]*left:\s*var\(--hf-viewport-x\)[^}]*width:\s*var\(--hf-viewport-width\)[^}]*height:\s*var\(--hf-viewport-height\)/s);
+    expect(styles).toMatch(/data-hf-floating-mobile='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
+    expect(styles).toMatch(/data-hf-floating-mobile='sheet'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
   });
 
   it('allows ordinary desktop selection without weakening compact touch surfaces', () => {

@@ -108,6 +108,8 @@ describe('React shell primitives', () => {
     const floatingWindow = await screen.findByRole('dialog', { name: 'Mark' });
     expect(floatingWindow.closest('[data-hf-portals]')).not.toBeNull();
     expect(floatingWindow.closest('[data-hf-floating-placement="bottom-start"]')).not.toBeNull();
+    expect(floatingWindow).toHaveAttribute('data-hf-keyboard-surface');
+    expect(floatingWindow.parentElement).toHaveAttribute('data-hf-keyboard-surface');
     expect(document.documentElement.dataset.hfModal).toBe('open');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Inside Mark' })).toHaveFocus());
 
@@ -490,7 +492,7 @@ describe('React shell primitives', () => {
     );
     await waitFor(() => expect(screen.getByTestId('notification-eligible')).toHaveTextContent('false'));
     Object.defineProperty(navigator, 'onLine', { value: true, configurable: true });
-    window.dispatchEvent(new Event('online'));
+    act(() => window.dispatchEvent(new Event('online')));
     await waitFor(() => expect(screen.getByTestId('notification-eligible')).toHaveTextContent('true'));
   });
 

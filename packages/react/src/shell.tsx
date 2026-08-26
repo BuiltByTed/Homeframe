@@ -810,6 +810,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
       <HomeframePortal>
         <div
           data-hf-floating-window-layer=""
+          data-hf-keyboard-surface=""
           data-hf-floating-placement={placement}
           data-hf-floating-mobile={mobilePresentation}
           data-hf-floating-modal={modal || undefined}
@@ -831,6 +832,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
             'aria-modal': modal || undefined,
             tabIndex: props.tabIndex ?? -1,
             'data-hf-floating-window': '',
+            'data-hf-keyboard-surface': '',
           }, children)}
         </div>
       </HomeframePortal>
