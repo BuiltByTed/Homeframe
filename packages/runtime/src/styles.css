@@ -593,10 +593,14 @@
 
     [data-hf-floating-window-layer][data-hf-floating-desktop='fullscreen']
     > [data-hf-floating-window] {
-      width: 100%;
-      height: 100%;
-      max-width: none;
-      max-height: none;
+      /* Fullscreen is an ownership boundary. These structural dimensions must
+         outrank consumer CSS, including ordinary unlayered window sizing. */
+      width: 100% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 100% !important;
+      min-height: 0 !important;
+      max-height: none !important;
       contain: strict;
     }
   }

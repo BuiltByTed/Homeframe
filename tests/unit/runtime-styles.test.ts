@@ -54,6 +54,10 @@ describe('runtime structural CSS', () => {
     expect(styles).toMatch(/data-hf-floating-mobile='sheet'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
   });
 
+  it('gives desktop fullscreen windows final ownership of their geometry', () => {
+    expect(styles).toMatch(/data-hf-floating-desktop='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*width:\s*100%\s*!important[^}]*min-width:\s*0\s*!important[^}]*max-width:\s*none\s*!important[^}]*height:\s*100%\s*!important[^}]*min-height:\s*0\s*!important[^}]*max-height:\s*none\s*!important/s);
+  });
+
   it('allows ordinary desktop selection without weakening compact touch surfaces', () => {
     expect(styles).not.toMatch(/\[data-hf-selection='allow-desktop'\]\s*\{[^}]*user-select:\s*none[^}]*\}\s*(?![\s\S]*@media)/s);
     expect(styles).toMatch(/@media \(max-width: 900px\)[\s\S]*\[data-hf-selection='allow-desktop'\]\s*\{[^}]*user-select:\s*none/s);

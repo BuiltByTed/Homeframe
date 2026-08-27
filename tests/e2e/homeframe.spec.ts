@@ -230,6 +230,12 @@ test('desktop fullscreen floating windows occupy the complete portal viewport', 
     layer.dataset.hfFloatingPlacement = 'bottom-end';
     const floatingWindow = document.createElement('section');
     floatingWindow.dataset.hfFloatingWindow = '';
+    floatingWindow.style.width = '780px';
+    floatingWindow.style.minWidth = '720px';
+    floatingWindow.style.maxWidth = '780px';
+    floatingWindow.style.height = '640px';
+    floatingWindow.style.minHeight = '600px';
+    floatingWindow.style.maxHeight = '640px';
     layer.append(floatingWindow);
     portal.append(layer);
 
