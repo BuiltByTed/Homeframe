@@ -91,6 +91,7 @@ describe('React shell primitives', () => {
           <FloatingWindow
             open={open}
             placement="bottom-start"
+            desktopPresentation="fullscreen"
             mobilePresentation="fullscreen"
             aria-label="Mark"
             onDismiss={() => setOpen(false)}
@@ -108,6 +109,7 @@ describe('React shell primitives', () => {
     const floatingWindow = await screen.findByRole('dialog', { name: 'Mark' });
     expect(floatingWindow.closest('[data-hf-portals]')).not.toBeNull();
     expect(floatingWindow.closest('[data-hf-floating-placement="bottom-start"]')).not.toBeNull();
+    expect(floatingWindow.closest('[data-hf-floating-desktop="fullscreen"]')).not.toBeNull();
     expect(floatingWindow).toHaveAttribute('data-hf-keyboard-surface');
     expect(floatingWindow.parentElement).toHaveAttribute('data-hf-keyboard-surface');
     expect(document.documentElement.dataset.hfModal).toBe('open');

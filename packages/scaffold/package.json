@@ -1,6 +1,6 @@
 {
   "name": "scaffold-homeframe-app",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Create a production-minded Homeframe React PWA with AI coding guardrails.",
   "type": "module",
   "files": [

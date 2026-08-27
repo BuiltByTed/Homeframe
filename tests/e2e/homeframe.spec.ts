@@ -217,6 +217,46 @@ test('mobile floating windows track the live viewport and keyboard-safe bottom e
   });
 });
 
+test('desktop fullscreen floating windows occupy the complete portal viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+
+  const geometry = await page.evaluate(() => {
+    const portal = document.querySelector<HTMLElement>('[data-hf-portals]')!;
+    const layer = document.createElement('div');
+    layer.dataset.hfFloatingWindowLayer = '';
+    layer.dataset.hfFloatingDesktop = 'fullscreen';
+    layer.dataset.hfFloatingMobile = 'fullscreen';
+    layer.dataset.hfFloatingPlacement = 'bottom-end';
+    const floatingWindow = document.createElement('section');
+    floatingWindow.dataset.hfFloatingWindow = '';
+    layer.append(floatingWindow);
+    portal.append(layer);
+
+    const portalRect = portal.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    const windowRect = floatingWindow.getBoundingClientRect();
+    const layerStyle = getComputedStyle(layer);
+    const windowStyle = getComputedStyle(floatingWindow);
+    const result = {
+      portal: [portalRect.left, portalRect.top, portalRect.right, portalRect.bottom],
+      layer: [layerRect.left, layerRect.top, layerRect.right, layerRect.bottom],
+      window: [windowRect.left, windowRect.top, windowRect.right, windowRect.bottom],
+      layerPadding: layerStyle.padding,
+      windowMaxWidth: windowStyle.maxWidth,
+      windowMaxHeight: windowStyle.maxHeight,
+    };
+    layer.remove();
+    return result;
+  });
+
+  expect(geometry.layer).toEqual(geometry.portal);
+  expect(geometry.window).toEqual(geometry.portal);
+  expect(geometry.layerPadding).toBe('0px');
+  expect(geometry.windowMaxWidth).toBe('none');
+  expect(geometry.windowMaxHeight).toBe('none');
+});
+
 test('an avoiding composer follows the keyboard while a manual dock stays covered', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const geometry = await page.evaluate(() => {

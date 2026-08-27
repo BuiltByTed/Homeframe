@@ -584,6 +584,23 @@
     justify-content: center;
   }
 
+  @media (min-width: 901px) {
+    [data-hf-floating-window-layer][data-hf-floating-desktop='fullscreen'] {
+      align-items: stretch;
+      justify-content: stretch;
+      padding: 0;
+    }
+
+    [data-hf-floating-window-layer][data-hf-floating-desktop='fullscreen']
+    > [data-hf-floating-window] {
+      width: 100%;
+      height: 100%;
+      max-width: none;
+      max-height: none;
+      contain: strict;
+    }
+  }
+
   @media (max-width: 900px) {
     [data-hf-floating-window-layer]:is(
       [data-hf-floating-mobile='fullscreen'],

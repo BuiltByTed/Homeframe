@@ -278,6 +278,13 @@ notification configuration to keep in sync.
 
 For a complete router and shell composition, follow [examples/kitchen-sink/src/App.tsx](./examples/kitchen-sink/src/App.tsx).
 
+Viewport-owned dialogs and tools can use `FloatingWindow`. Its default desktop
+presentation remains a padded floating panel; set
+`desktopPresentation="fullscreen"` when a maximized tool must occupy the entire
+Homeframe portal above the header, navigation, and every safe-area edge. The
+independent `mobilePresentation="fullscreen" | "sheet"` option continues to own
+the compact/PWA treatment.
+
 ## Headless install and notification UI
 
 Homeframe makes policy and capability state available without imposing a design:

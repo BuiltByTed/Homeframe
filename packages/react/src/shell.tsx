@@ -707,11 +707,13 @@ export function HomeframePortalRoot(props: HTMLAttributes<HTMLDivElement>) {
 }
 
 export type FloatingWindowPlacement = 'bottom-start' | 'bottom-end' | 'center';
+export type FloatingWindowDesktopPresentation = 'floating' | 'fullscreen';
 export type FloatingWindowMobilePresentation = 'fullscreen' | 'sheet';
 
 export interface FloatingWindowProps extends HTMLAttributes<HTMLElement> {
   open?: boolean;
   placement?: FloatingWindowPlacement;
+  desktopPresentation?: FloatingWindowDesktopPresentation;
   mobilePresentation?: FloatingWindowMobilePresentation;
   modal?: boolean;
   backdrop?: boolean;
@@ -744,6 +746,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
   function FloatingWindow({
     open = true,
     placement = 'bottom-end',
+    desktopPresentation = 'floating',
     mobilePresentation = 'fullscreen',
     modal = true,
     backdrop = false,
@@ -814,6 +817,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
           data-hf-floating-window-layer=""
           data-hf-keyboard-surface=""
           data-hf-floating-placement={placement}
+          data-hf-floating-desktop={desktopPresentation}
           data-hf-floating-mobile={mobilePresentation}
           data-hf-floating-modal={modal || undefined}
         >
