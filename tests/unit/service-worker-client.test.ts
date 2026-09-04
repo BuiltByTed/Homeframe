@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { HomeframeServiceWorkerClient } from '@builtbyted/sw';
 
 class FakeWorker extends EventTarget {
   skipWaitingMessages = 0;
+  clientIds: string[] = ['live-tab'];
   state: ServiceWorkerState;
 
   constructor(state: ServiceWorkerState = 'installed') {
@@ -21,6 +22,10 @@ class FakeWorker extends EventTarget {
     if (value.type === 'HF_GET_VERSION') {
       const port = transfer?.[0] as MessagePort | undefined;
       port?.postMessage({ type: 'HF_VERSION', buildId: 'build-next' });
+    }
+    if (value.type === 'HF_GET_CLIENT_IDS') {
+      const port = transfer?.[0] as MessagePort | undefined;
+      port?.postMessage({ clientIds: this.clientIds });
     }
   }
 }
@@ -65,6 +70,73 @@ beforeEach(() => {
 });
 
 describe('HomeframeServiceWorkerClient multi-client coordination', () => {
+  it.each(['ready', 'deferred'] as const)('preserves a %s update across repeated checks', async (state) => {
+    const worker = new FakeWorker();
+    const registration = new FakeRegistration(worker);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: new FakeServiceWorkerContainer(worker, registration), configurable: true,
+    });
+    const client = new HomeframeServiceWorkerClient({ mode: 'prompt', checkOnLaunch: false });
+    try {
+      await client.start();
+      if (state === 'deferred') client.defer();
+      await client.check();
+      expect(client.getSnapshot()).toMatchObject({ state, availableBuild: 'build-next' });
+      await client.activate();
+      await client.check();
+      expect(client.getSnapshot().state).toBe('activating');
+      expect(worker.skipWaitingMessages).toBe(1);
+    } finally { client.stop(); }
+  });
+
+  it('protects local work when another tab activates and rechecks guards after reload preparation', async () => {
+    const worker = new FakeWorker();
+    const registration = new FakeRegistration(worker);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: new FakeServiceWorkerContainer(worker, registration), configurable: true,
+    });
+    const client = new HomeframeServiceWorkerClient({ mode: 'manual', reload: 'safe-point', checkOnLaunch: false });
+    let safe = false;
+    const guard = vi.fn(() => safe);
+    client.registerGuard(guard);
+    const prepare = vi.fn(async () => { safe = false; });
+    client['prepareUpdateReload'] = prepare;
+    try {
+      await client.start();
+      await client['onControllerChange']();
+      expect(client.getSnapshot().state).toBe('deferred');
+      expect(guard).toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+      safe = true;
+      window.dispatchEvent(new Event('homeframe:update-safe-point'));
+      await delay(180);
+      expect(prepare).toHaveBeenCalledOnce();
+      expect(client.getSnapshot().state).toBe('deferred');
+      expect(client['didReload']).toBe(false);
+      expect(sessionStorage.getItem('hf:update-reload:-')).toBeNull();
+    } finally { client.stop(); }
+  });
+
+  it('retains an old veto until the worker confirms that its client has closed', async () => {
+    const worker = new FakeWorker();
+    const registration = new FakeRegistration(worker);
+    Object.defineProperty(navigator, 'serviceWorker', {
+      value: new FakeServiceWorkerContainer(worker, registration), configurable: true,
+    });
+    const client = new HomeframeServiceWorkerClient({ mode: 'manual', checkOnLaunch: false });
+    try {
+      await client.start();
+      client['receiveCoordination']({ type: 'safe-state', sender: 'peer', clientId: 'live-tab', buildId: 'build-next', safe: false, at: Date.now() - 31_000 });
+      expect(await client['hasUnsafePeer']('build-next')).toBe(true);
+      worker.clientIds = [];
+      expect(await client['hasUnsafePeer']('build-next')).toBe(false);
+      client['receiveCoordination']({ type: 'safe-state', sender: 'old-protocol', buildId: 'build-next', safe: false, at: Date.now() - 31_000 });
+      expect(await client['hasUnsafePeer']('build-next')).toBe(true);
+      client['receiveCoordination']({ type: 'closed', sender: 'old-protocol', buildId: 'build-next', at: Date.now() });
+      expect(await client['hasUnsafePeer']('build-next')).toBe(false);
+    } finally { client.stop(); }
+  });
+
   it('carries an update-reload viewport stabilization marker into the new document', () => {
     sessionStorage.setItem('hf:update-reload:-restored-', String(Date.now()));
     const client = new HomeframeServiceWorkerClient({ scope: '/restored/' });

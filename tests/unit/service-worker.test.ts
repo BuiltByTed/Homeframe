@@ -161,6 +161,23 @@ describe('service-worker generator', () => {
     expect(matchingWorker).not.toMatch(/\beval\s*\(/);
   });
 
+  it('reports the requesting client identity and only live clients inside the worker scope', async () => {
+    const source = generateServiceWorker({ appId: '/app/', buildId: 'next', scope: '/app/', documentFallback: '/app/', precache: [] });
+    const runtime = executeWorkerEvents(source, [
+      { id: 'first', url: 'https://homeframe.test/app/' },
+      { id: 'second', url: 'https://homeframe.test/app/profile' },
+      { id: 'outside', url: 'https://homeframe.test/elsewhere/' },
+    ]);
+    const messages: unknown[] = [];
+    const ports = [{ postMessage(value: unknown) { messages.push(value); } }];
+    await runtime.dispatch('message', { data: { type: 'HF_GET_VERSION' }, source: { id: 'first' }, ports });
+    await runtime.dispatch('message', { data: { type: 'HF_GET_CLIENT_IDS' }, ports });
+    expect(messages).toEqual([
+      { type: 'HF_VERSION', buildId: 'next', clientId: 'first' },
+      { clientIds: ['first', 'second'] },
+    ]);
+  });
+
   it('focuses the best same-origin client and routes a validated notification click', async () => {
     const messages: unknown[] = [];
     let focused = 0;

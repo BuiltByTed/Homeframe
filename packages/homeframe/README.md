@@ -26,6 +26,18 @@ keyboard open/close plus open-keyboard scrolling checks before release.
 
 ## Install manually
 
+Route loaders run again on fresh navigations. A prefetched result can serve one
+navigation within 30 seconds; Back/Forward can reuse data for up to 60 seconds.
+The router retains at most 100 data entries and six DOM previews. Older managed
+history entries remain navigable and use an app-canvas preview until rendered.
+
+After a mutation, call `await router.revalidate()` to refresh the current route
+while preserving its history entry and scroll. Call `router.invalidate()` before
+changing accounts, then navigate to the next screen; `router.invalidate(url)`
+clears a specific URL. Invalidation cancels pending work and clears retained data
+and previews; it does not itself navigate or replace the currently rendered UI.
+`useHomeframeLogout()` also invalidates active Homeframe routers.
+
 ```bash
 npm install @builtbyted/homeframe react react-dom
 npm install -D vite @vitejs/plugin-react typescript

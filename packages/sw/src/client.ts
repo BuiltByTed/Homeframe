@@ -5,14 +5,16 @@ import type {
 } from './types.js';
 
 interface UpdateCoordinationMessage {
-  type: 'ready' | 'safe-state' | 'activating' | 'current';
+  type: 'ready' | 'safe-state' | 'activating' | 'current' | 'closed';
   sender: string;
+  clientId?: string;
   buildId: string | null;
   safe?: boolean;
   at: number;
 }
 
 interface PeerSafeState {
+  clientId: string | null;
   buildId: string | null;
   safe: boolean;
   at: number;
@@ -76,6 +78,9 @@ export class HomeframeServiceWorkerClient {
   private intervalId: number | null = null;
   private lastCheckAt = 0;
   private didReload = false;
+  private reloadPending = false;
+  private reloadPromise: Promise<void> | null = null;
+  private serviceWorkerClientId: string | null = null;
   private hadControllerAtStart = false;
   private safePointTimer: number | null = null;
   private rootObserver: MutationObserver | null = null;
@@ -135,14 +140,18 @@ export class HomeframeServiceWorkerClient {
     this.hadControllerAtStart = Boolean(navigator.serviceWorker.controller);
     this.publish({ state: 'registering', error: null });
     try {
-      this.registration = await navigator.serviceWorker.register(this.config.url, {
+      const registration = await navigator.serviceWorker.register(this.config.url, {
         scope: this.config.scope,
         updateViaCache: 'none',
       });
+      if (signal.aborted) return () => undefined;
+      this.registration = registration;
+      const currentBuild = await this.queryBuild(navigator.serviceWorker.controller);
+      if (signal.aborted) return () => undefined;
       this.publish({
         state: 'current',
         registration: this.registration,
-        currentBuild: await this.queryBuild(navigator.serviceWorker.controller),
+        currentBuild,
       });
       this.observeRegistration(this.registration);
       navigator.serviceWorker.addEventListener('controllerchange', () => void this.onControllerChange(), {
@@ -177,20 +186,22 @@ export class HomeframeServiceWorkerClient {
           void this.check();
         }
         if (document.visibilityState === 'visible' && this.snapshot.state === 'deferred') {
-          void this.maybeActivate();
+          if (this.reloadPending) void this.maybeReload();
+          else void this.maybeActivate();
         }
       }, { signal });
 
       const waitingAtLaunch = this.registration.waiting;
       if (waitingAtLaunch) await this.onWaiting(waitingAtLaunch);
       if (this.config.checkOnLaunch && !waitingAtLaunch) await this.check();
+      if (signal.aborted) return () => undefined;
       if (this.config.intervalMinutes > 0) {
         this.intervalId = window.setInterval(() => {
           if (document.visibilityState === 'visible') void this.check();
         }, this.config.intervalMinutes * 60_000);
       }
     } catch (error) {
-      this.publish({ state: 'failed', error: errorMessage(error) });
+      if (!signal.aborted) this.publish({ state: 'failed', error: errorMessage(error) });
     }
     if (!['downloading', 'ready', 'activating', 'reloading'].includes(this.snapshot.state)) {
       this.releaseInitialPresentation();
@@ -199,6 +210,7 @@ export class HomeframeServiceWorkerClient {
   }
 
   stop(): void {
+    this.broadcastCoordination('closed', this.snapshot.availableBuild);
     this.abortController?.abort();
     this.abortController = null;
     if (this.intervalId !== null) window.clearInterval(this.intervalId);
@@ -238,15 +250,34 @@ export class HomeframeServiceWorkerClient {
 
   private async performCheck(): Promise<void> {
     if (!this.registration) return;
+    if (this.snapshot.state === 'activating' || this.reloadPending || this.didReload) return;
+    const registration = this.registration;
+    const signal = this.abortController?.signal;
+    const previousState = this.snapshot.state;
+    const previousWaiting = registration.waiting;
+    const preserveWaiting = Boolean(previousWaiting)
+      && (previousState === 'ready' || previousState === 'deferred');
     this.lastCheckAt = Date.now();
-    this.publish({ state: 'checking', error: null });
+    if (!preserveWaiting && !this.reloadPending && !this.didReload) this.publish({ state: 'checking', error: null });
     try {
-      await this.registration.update();
-      if (!this.registration.installing && !this.registration.waiting) {
-        this.publish({ state: 'current' });
+      await registration.update();
+      if (signal?.aborted || this.reloadPending || this.didReload || this.getSnapshot().state === 'activating') return;
+      if (registration.waiting) {
+        if (preserveWaiting && registration.waiting === previousWaiting) {
+          this.publish({ state: previousState, error: null });
+          this.scheduleSafePointRetry();
+        } else {
+          await this.onWaiting(registration.waiting);
+        }
+      } else if (registration.installing) {
+        this.publish({ state: 'downloading', error: null });
+      } else {
+        this.publish({ state: 'current', availableBuild: null });
       }
     } catch (error) {
-      this.publish({ state: 'failed', error: errorMessage(error) });
+      if (!signal?.aborted && !this.reloadPending && !this.didReload) {
+        this.publish({ state: preserveWaiting ? previousState : 'failed', error: errorMessage(error) });
+      }
     }
   }
 
@@ -276,6 +307,8 @@ export class HomeframeServiceWorkerClient {
   }
 
   private observeRegistration(registration: ServiceWorkerRegistration): void {
+    const signal = this.abortController?.signal;
+    if (!signal) return;
     registration.addEventListener('updatefound', () => {
       const installing = registration.installing;
       if (!installing) return;
@@ -292,8 +325,8 @@ export class HomeframeServiceWorkerClient {
         } else if (installing.state === 'redundant') {
           this.followReplacementWorker(registration, installing, activeAtStart, generation);
         }
-      });
-    });
+      }, { signal });
+    }, { signal });
   }
 
   private followReplacementWorker(
@@ -337,7 +370,9 @@ export class HomeframeServiceWorkerClient {
   }
 
   private async onWaiting(worker: ServiceWorker): Promise<void> {
+    const signal = this.abortController?.signal;
     const buildId = await this.queryBuild(worker);
+    if (signal?.aborted || this.reloadPending || this.didReload) return;
     this.publish({ state: 'ready', availableBuild: buildId });
     this.broadcastCoordination('ready', buildId);
     await this.maybeActivate();
@@ -347,12 +382,16 @@ export class HomeframeServiceWorkerClient {
   }
 
   private async maybeActivate(): Promise<void> {
+    const signal = this.abortController?.signal;
+    if (this.reloadPending) return this.maybeReload();
+    if (this.didReload) return;
     if (this.config.mode !== 'automatic') return;
     if (this.config.reload === 'immediate') {
       await this.activateAsLeader();
       return;
     }
     const safe = await this.isSafePoint();
+    if (signal?.aborted) return;
     this.broadcastCoordination('safe-state', this.snapshot.availableBuild, safe);
     if (!safe) {
       this.publish({ state: 'deferred' });
@@ -361,7 +400,15 @@ export class HomeframeServiceWorkerClient {
     await new Promise<void>((resolve) => window.setTimeout(resolve, 90));
     const stillSafe = await this.isSafePoint();
     this.broadcastCoordination('safe-state', this.snapshot.availableBuild, stillSafe);
-    if (!stillSafe || this.hasUnsafePeer(this.snapshot.availableBuild)) {
+    if (!stillSafe || await this.hasUnsafePeer(this.snapshot.availableBuild)) {
+      if (signal?.aborted) return;
+      this.publish({ state: 'deferred' });
+      return;
+    }
+    if (signal?.aborted) return;
+    const finalSafe = await this.isSafePoint();
+    this.broadcastCoordination('safe-state', this.snapshot.availableBuild, finalSafe);
+    if (!finalSafe) {
       this.publish({ state: 'deferred' });
       return;
     }
@@ -369,11 +416,12 @@ export class HomeframeServiceWorkerClient {
   }
 
   private scheduleSafePointRetry(): void {
-    if (this.snapshot.state !== 'deferred' || this.config.mode !== 'automatic') return;
+    if (!this.reloadPending && (this.snapshot.state !== 'deferred' || this.config.mode !== 'automatic')) return;
     if (this.safePointTimer !== null) window.clearTimeout(this.safePointTimer);
     this.safePointTimer = window.setTimeout(() => {
       this.safePointTimer = null;
-      void this.maybeActivate();
+      if (this.reloadPending) void this.maybeReload();
+      else void this.maybeActivate();
     }, 120);
   }
 
@@ -414,10 +462,49 @@ export class HomeframeServiceWorkerClient {
       return;
     }
     if (this.didReload) return;
-    this.didReload = true;
-    this.broadcastCoordination('current', this.snapshot.availableBuild);
+    this.reloadPending = true;
+    await this.maybeReload();
+  }
+
+  private maybeReload(): Promise<void> {
+    if (this.reloadPromise) return this.reloadPromise;
+    const promise = this.performReload();
+    this.reloadPromise = promise;
+    const clear = () => { if (this.reloadPromise === promise) this.reloadPromise = null; };
+    void promise.then(clear, clear);
+    return promise;
+  }
+
+  private async performReload(): Promise<void> {
+    if (!this.reloadPending || this.didReload) return;
+    const signal = this.abortController?.signal;
+    const defer = () => {
+      delete document.documentElement.dataset.hfUpdateReload;
+      this.completeUpdateReloadPresentation();
+      this.publish({ state: 'deferred' });
+      this.releaseInitialPresentation();
+    };
+    if (this.config.reload !== 'immediate' && !await this.isSafePoint()) {
+      defer();
+      return;
+    }
+    if (signal?.aborted) return;
     this.publish({ state: 'reloading' });
     await this.prepareUpdateReload();
+    // Another tab may have activated while this tab was dirty. Each document
+    // protects its own work, including changes made during viewport settlement.
+    if (signal?.aborted) {
+      delete document.documentElement.dataset.hfUpdateReload;
+      this.completeUpdateReloadPresentation();
+      return;
+    }
+    if (this.config.reload !== 'immediate' && !await this.isSafePoint()) {
+      defer();
+      return;
+    }
+    this.didReload = true;
+    this.reloadPending = false;
+    this.broadcastCoordination('current', this.snapshot.availableBuild);
     window.location.reload();
   }
 
@@ -462,7 +549,7 @@ export class HomeframeServiceWorkerClient {
       this.publish({ state: 'ready', availableBuild: message.buildId ?? null });
       void this.maybeActivate();
     } else if (message.type === 'HF_ACTIVATED') {
-      this.publish({ state: 'current', currentBuild: message.buildId ?? null });
+      this.publish({ ...(this.reloadPending || this.didReload ? {} : { state: 'current' }), currentBuild: message.buildId ?? null });
       this.broadcastCoordination('current', message.buildId ?? null);
     } else if (message.type === 'HF_NOTIFICATION_ROUTE' && typeof message.route === 'string') {
       window.dispatchEvent(new CustomEvent('homeframe:notification-route', {
@@ -486,9 +573,11 @@ export class HomeframeServiceWorkerClient {
     if (!worker) return Promise.resolve(null);
     return new Promise((resolve) => {
       const channel = new MessageChannel();
-      const timeout = window.setTimeout(() => resolve(null), 800);
+      const timeout = window.setTimeout(() => { channel.port1.close(); resolve(null); }, 800);
       channel.port1.onmessage = (event) => {
         window.clearTimeout(timeout);
+        channel.port1.close();
+        if (typeof event.data?.clientId === 'string') this.serviceWorkerClientId = event.data.clientId;
         resolve(event.data?.buildId ?? null);
       };
       worker.postMessage({ type: 'HF_GET_VERSION' }, [channel.port2]);
@@ -513,6 +602,9 @@ export class HomeframeServiceWorkerClient {
     const channelSuffix = this.config.scope.replace(/[^a-zA-Z0-9_-]+/g, '-') || 'app';
     this.coordinationStorageKey = `hf:update:${channelSuffix}:message`;
     this.activationLeaseKey = `hf:update:${channelSuffix}:leader`;
+    window.addEventListener('pagehide', (event) => {
+      if (!event.persisted) this.broadcastCoordination('closed', this.snapshot.availableBuild);
+    }, { signal });
     if ('BroadcastChannel' in globalThis) {
       this.coordinationChannel = new BroadcastChannel(`homeframe-update-${channelSuffix}`);
       this.coordinationChannel.addEventListener('message', (event) => {
@@ -537,13 +629,14 @@ export class HomeframeServiceWorkerClient {
     const message: UpdateCoordinationMessage = {
       type,
       sender: this.clientId,
+      ...(this.serviceWorkerClientId ? { clientId: this.serviceWorkerClientId } : {}),
       buildId,
       ...(safe === undefined ? {} : { safe }),
       at: Date.now(),
     };
     this.coordinationChannel?.postMessage(message);
     try {
-      localStorage.setItem(this.coordinationStorageKey, JSON.stringify(message));
+      if (this.coordinationStorageKey) localStorage.setItem(this.coordinationStorageKey, JSON.stringify(message));
     } catch {
       // BroadcastChannel remains available in storage-restricted contexts.
     }
@@ -553,34 +646,61 @@ export class HomeframeServiceWorkerClient {
     if (!isCoordinationMessage(value) || value.sender === this.clientId) return;
     if (value.type === 'safe-state' && typeof value.safe === 'boolean') {
       this.peerSafeStates.set(value.sender, {
+        clientId: typeof value.clientId === 'string' ? value.clientId : null,
         buildId: value.buildId,
         safe: value.safe,
         at: value.at,
       });
       if (value.safe) this.scheduleSafePointRetry();
+    } else if (value.type === 'closed') {
+      this.peerSafeStates.delete(value.sender);
+      this.scheduleSafePointRetry();
     } else if (value.type === 'ready') {
       if (this.snapshot.state === 'current') {
         this.publish({ state: 'ready', availableBuild: value.buildId });
       }
       void this.maybeActivate();
     } else if (value.type === 'activating') {
-      this.publish({ state: 'activating', availableBuild: value.buildId });
+      if (!this.reloadPending && !this.didReload) this.publish({ state: 'activating', availableBuild: value.buildId });
     } else if (value.type === 'current') {
-      this.publish({ state: 'current', currentBuild: value.buildId, availableBuild: null });
+      if (!this.reloadPending && !this.didReload) this.publish({ state: 'current', currentBuild: value.buildId, availableBuild: null });
       this.releaseInitialPresentation();
     }
   }
 
-  private hasUnsafePeer(buildId: string | null): boolean {
+  private async hasUnsafePeer(buildId: string | null): Promise<boolean> {
     const cutoff = Date.now() - 30_000;
+    let liveClients: string[] | null | undefined;
     for (const [id, peer] of this.peerSafeStates) {
-      if (peer.at < cutoff) {
-        this.peerSafeStates.delete(id);
-        continue;
+      if (peer.buildId !== buildId || peer.safe) continue;
+      if (peer.at < cutoff && peer.clientId) {
+        liveClients ??= await this.queryLiveClients();
+        if (liveClients && !liveClients.includes(peer.clientId)) {
+          this.peerSafeStates.delete(id);
+          continue;
+        }
       }
-      if (peer.buildId === buildId && !peer.safe) return true;
+      // Age alone is not evidence that an unsaved tab has closed. Older
+      // workers without the liveness protocol remain conservatively deferred.
+      return true;
     }
     return false;
+  }
+
+  private queryLiveClients(): Promise<string[] | null> {
+    const worker = this.registration?.active;
+    if (!worker) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const channel = new MessageChannel();
+      const timeout = window.setTimeout(() => { channel.port1.close(); resolve(null); }, 800);
+      channel.port1.onmessage = (event) => {
+        window.clearTimeout(timeout);
+        channel.port1.close();
+        const ids: unknown = event.data?.clientIds;
+        resolve(Array.isArray(ids) && ids.every((id) => typeof id === 'string') ? ids : null);
+      };
+      worker.postMessage({ type: 'HF_GET_CLIENT_IDS' }, [channel.port2]);
+    });
   }
 
   private async activateAsLeader(): Promise<void> {
@@ -648,7 +768,7 @@ export class HomeframeServiceWorkerClient {
 function isCoordinationMessage(value: unknown): value is UpdateCoordinationMessage {
   if (!value || typeof value !== 'object') return false;
   const message = value as Partial<UpdateCoordinationMessage>;
-  return ['ready', 'safe-state', 'activating', 'current'].includes(message.type ?? '')
+  return ['ready', 'safe-state', 'activating', 'current', 'closed'].includes(message.type ?? '')
     && typeof message.sender === 'string'
     && (message.buildId === null || typeof message.buildId === 'string')
     && typeof message.at === 'number'

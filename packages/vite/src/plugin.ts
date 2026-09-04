@@ -165,6 +165,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
         await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
           appId: config.app.id,
           buildId,
+          base: vite.base,
           generatedAt: new Date().toISOString(),
           serviceWorker: null,
           precacheEntries: 0,
@@ -201,6 +202,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
       await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
         appId: config.app.id,
         buildId,
+        base: vite.base,
         generatedAt: new Date().toISOString(),
         serviceWorker: joinBase(vite.base, swFile),
         precacheEntries: precache.length,

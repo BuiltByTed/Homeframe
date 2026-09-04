@@ -5,8 +5,9 @@ import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Command } from 'commander';
+import packageInfo from '../package.json';
 
-const VERSION = '0.1.0';
+const VERSION = packageInfo.version;
 const DEFAULT_DIRECTORY = 'homeframe-app';
 const TEMPLATE_ROOT = resolveTemplateRoot(import.meta.url);
 const IGNORED_EXISTING_ENTRIES = new Set(['.DS_Store', '.git']);

@@ -377,7 +377,15 @@ async function cacheMatch(request, rule) {
   const key = await cacheKey(request, rule);
   if (!key) return null;
   const response = await cache.match(key);
-  if (response) await touchMeta(cacheName, key.url, false);
+  if (response) {
+    const meta = await getMeta(cacheName, key.url).catch(() => null);
+    if (!meta || Date.now() - meta.updatedAt >= rule.maxAgeSeconds * 1000) {
+      await cache.delete(key);
+      await deleteMeta(cacheName, key.url).catch(() => undefined);
+      return null;
+    }
+    await touchMeta(cacheName, key.url, false).catch(() => undefined);
+  }
   const range = rule.rangeRequests ? request.headers.get('range') : null;
   return response && range ? rangedResponse(response, range) : response;
 }
@@ -427,7 +435,9 @@ async function boundedCacheResponse(response, maximumBytes) {
     if (done) break;
     total += value.byteLength;
     if (total > maximumBytes) {
-      await reader.cancel('Homeframe runtime response exceeds maxResponseBytes.').catch(() => undefined);
+      // A cloned response is a tee. Cancellation can wait for the original
+      // branch, which the caller cannot consume until we return its response.
+      void reader.cancel('Homeframe runtime response exceeds maxResponseBytes.').catch(() => undefined);
       return null;
     }
     chunks.push(value);
@@ -505,7 +515,12 @@ self.addEventListener('message', (event) => {
   if (message.type === 'HF_SKIP_WAITING') {
     event.waitUntil(self.skipWaiting());
   } else if (message.type === 'HF_GET_VERSION') {
-    event.ports[0]?.postMessage({ type: 'HF_VERSION', buildId: HF.buildId });
+    event.ports[0]?.postMessage({ type: 'HF_VERSION', buildId: HF.buildId, clientId: event.source?.id ?? null });
+  } else if (message.type === 'HF_GET_CLIENT_IDS') {
+    event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => event.ports[0]?.postMessage({
+        clientIds: clients.filter((client) => pathWithinScope(new URL(client.url).pathname)).map((client) => client.id),
+      })));
   } else if (message.type === 'HF_PURGE_RUNTIME' && typeof message.cacheName === 'string') {
     const allowed = HF.runtimeCaching.some((rule) => rule.cacheName === message.cacheName);
     if (allowed) {

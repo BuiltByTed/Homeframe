@@ -320,36 +320,44 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
   const indexPath = resolve(dist, 'index.html');
   const manifestPath = resolve(dist, 'manifest.webmanifest');
   const buildPath = resolve(dist, 'homeframe-build.json');
-  let workerRelativePath = 'sw.js';
+  let workerPath = resolve(dist, 'sw.js');
   let workerDisabled = false;
-  let builtHtml = '';
+  let workerInvalid = false;
+  const builtHtml = existsSync(indexPath) ? await readFile(indexPath, 'utf8') : '';
+  const manifestHref = attributeFromTag(builtHtml, 'link', 'rel', 'manifest', 'href');
+  let outputBase = '/';
+  try {
+    if (manifestHref) outputBase = new URL(manifestHref, 'https://homeframe.invalid/').pathname.replace(/[^/]*$/, '');
+  } catch {
+    diagnostics.push(error('HF_MANIFEST_LINK', 'Built HTML has an invalid manifest URL.', 'Regenerate the built HTML.'));
+  }
   if (existsSync(buildPath)) {
     try {
-      const build = JSON.parse(await readFile(buildPath, 'utf8')) as { serviceWorker?: unknown };
+      const build = JSON.parse(await readFile(buildPath, 'utf8')) as { serviceWorker?: unknown; base?: unknown };
+      if (typeof build.base === 'string') outputBase = new URL(build.base, 'https://homeframe.invalid/').pathname;
       if (build.serviceWorker === null || build.serviceWorker === false) {
         workerDisabled = true;
       } else if (typeof build.serviceWorker === 'string') {
-        workerRelativePath = new URL(build.serviceWorker, 'https://homeframe.invalid/').pathname.replace(/^\/+/, '');
+        const path = localOutputPath(dist, build.serviceWorker, outputBase);
+        if (!path) {
+          diagnostics.push(error('HF_SW_PATH_INVALID', `Generated worker URL is outside the output base: ${build.serviceWorker}.`, 'Use a same-origin worker inside the deployment base.'));
+          workerInvalid = true;
+        } else workerPath = path;
       }
     } catch (reason) {
       diagnostics.push(error('HF_BUILD_INFO_INVALID', `homeframe-build.json is invalid: ${message(reason)}`, 'Rebuild with @builtbyted/vite.'));
     }
   }
-  const workerPath = resolve(dist, workerRelativePath);
-  if (!workerPath.startsWith(`${resolve(dist)}/`) && workerPath !== resolve(dist)) {
-    diagnostics.push(error('HF_SW_PATH_INVALID', `Generated worker path escapes dist: ${workerRelativePath}.`, 'Use a same-origin worker file inside the build output.'));
-  }
   const requiredFiles: Array<[string, string, string]> = [
     [indexPath, 'HF_INDEX_MISSING', 'built index.html'],
     [manifestPath, 'HF_MANIFEST_MISSING', 'generated manifest'],
-    ...(workerDisabled ? [] : [[workerPath, 'HF_SW_MISSING', 'generated service worker']] as Array<[string, string, string]>),
+    ...(workerDisabled || workerInvalid ? [] : [[workerPath, 'HF_SW_MISSING', 'generated service worker']] as Array<[string, string, string]>),
   ];
   for (const [path, code, label] of requiredFiles) {
     if (!existsSync(path)) diagnostics.push(error(code, `Missing ${label}.`, 'Run the Homeframe production build and inspect plugin configuration.'));
   }
   if (existsSync(indexPath)) {
-    const html = await readFile(indexPath, 'utf8');
-    builtHtml = html;
+    const html = builtHtml;
     const checks: Array<[string, RegExp, string]> = [
       ['HF_VIEWPORT_META', /viewport-fit=cover/, 'edge-to-edge viewport metadata'],
       ['HF_BOOT_SPLASH', /id="homeframe-boot-splash"/, 'static boot splash'],
@@ -387,7 +395,7 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
   }
   if (workerDisabled) {
     diagnostics.push(info('HF_SW_DISABLED', 'Homeframe service-worker generation is disabled for this build.', 'Verify that another worker intentionally owns the scope during a staged migration.'));
-  } else if (existsSync(workerPath)) {
+  } else if (!workerInvalid && existsSync(workerPath)) {
     const worker = await readFile(workerPath, 'utf8');
     const capabilities: Array<[string, string]> = [
       ['HF_UPDATE_READY', 'atomic update signaling'],
@@ -420,7 +428,7 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
         typeof entry === 'object' && entry !== null && typeof (entry as { url?: unknown }).url === 'string'
           ? [(entry as { url: string }).url]
           : []));
-      for (const assetUrl of localShellAssetUrls(builtHtml)) {
+      for (const assetUrl of localShellAssetUrls(builtHtml, outputBase)) {
         if (!precacheUrls.has(assetUrl)) diagnostics.push(error(
           'HF_ROUTE_CHUNK_NOT_PRECACHED',
           `Shell asset ${assetUrl} is referenced by HTML but absent from the atomic precache.`,
@@ -435,7 +443,7 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
         if (typeof url !== 'string' || typeof revision !== 'string') continue;
         const path = url === payload.documentFallback
           ? indexPath
-          : localOutputPath(dist, url);
+          : localOutputPath(dist, url, outputBase);
         if (!path) {
           diagnostics.push(error('HF_PRECACHE_PATH', `Precache URL ${url} does not resolve inside the build output.`, 'Use only same-origin, in-output URLs for build-generated precache entries.'));
           continue;
@@ -496,19 +504,21 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
   return diagnostics;
 }
 
-function localShellAssetUrls(html: string): string[] {
+function localShellAssetUrls(html: string, base = '/'): string[] {
   return [...html.matchAll(/<(?:script|link)\b[^>]*(?:src|href)=["']([^"']+)["'][^>]*>/gi)]
     .map((match) => match[1])
     .filter((value): value is string => typeof value === 'string' && /\.(?:js|css)(?:[?#]|$)/i.test(value))
-    .map((value) => new URL(value, 'https://homeframe.invalid/').pathname);
+    .map((value) => new URL(value, `https://homeframe.invalid${base}`).pathname);
 }
 
-function localOutputPath(dist: string, urlValue: string): string | null {
+function localOutputPath(dist: string, urlValue: string, base = '/'): string | null {
   try {
-    const url = new URL(urlValue, 'https://homeframe.invalid/');
+    const prefix = base.endsWith('/') ? base : `${base}/`;
+    const url = new URL(urlValue, `https://homeframe.invalid${prefix}`);
     if (url.origin !== 'https://homeframe.invalid') return null;
+    if (!url.pathname.startsWith(prefix)) return null;
     const root = resolve(dist);
-    const path = resolve(root, decodeURIComponent(url.pathname).replace(/^\/+/, ''));
+    const path = resolve(root, decodeURIComponent(url.pathname.slice(prefix.length)));
     return path === root || path.startsWith(`${root}/`) ? path : null;
   } catch {
     return null;

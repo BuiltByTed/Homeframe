@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -26,14 +27,15 @@ describe('Homeframe doctor built-output checks', () => {
     expect(isCliEntryPoint(pathToFileURL(target).href, undefined)).toBe(false);
   });
 
-  it('validates a build without requiring maskable icons', async () => {
+  it.each(['/', '/app/', '/nested/app/'])('validates a build deployed at %s without requiring maskable icons', async (base) => {
     const dist = await fixtureDirectory();
     await writeFixture(dist, 'index.html', `<!doctype html>
       <html><head>
         <meta name="viewport" content="width=device-width,viewport-fit=cover">
-        <link rel="manifest" href="/manifest.webmanifest">
+        <link rel="manifest" href="${base}manifest.webmanifest">
         <link rel="apple-touch-icon" href="/generated/apple-touch-icon.png">
         <script id="homeframe-bootstrap">window.__HOMEFRAME_BUILD__={}</script>
+        <script src="${base}assets/app.js"></script>
       </head><body><div id="homeframe-boot-splash"></div></body></html>`);
     await writeFixture(dist, 'manifest.webmanifest', JSON.stringify({
       id: '/',
@@ -50,20 +52,38 @@ describe('Homeframe doctor built-output checks', () => {
       ],
     }));
     await writeFixture(dist, 'homeframe-build.json', JSON.stringify({
-      serviceWorker: '/service-worker.js',
+      serviceWorker: `${base}workers/service-worker.js`,
     }));
-    await writeFixture(dist, 'service-worker.js', generateServiceWorker({
+    await writeFixture(dist, 'assets/app.js', 'export {};');
+    await writeFixture(dist, 'workers/service-worker.js', generateServiceWorker({
       appId: '/',
       buildId: 'fixture-build',
-      scope: '/',
-      documentFallback: '/',
-      precache: [{ url: '/', revision: 'document-revision' }],
+      scope: base,
+      documentFallback: base,
+      precache: [
+        { url: base, revision: 'document-revision' },
+        { url: `${base}assets/app.js`, revision: createHash('sha256').update('export {};').digest('hex') },
+      ],
     }));
     await writeFixture(dist, 'generated/asset-report.json', '[]');
 
     const diagnostics = await doctorBuild(dist);
     expect(diagnostics.filter((item) => item.severity === 'error')).toEqual([]);
+    await writeFixture(dist, 'homeframe-build.json', JSON.stringify({
+      base, serviceWorker: `${base}workers/service-worker.js`,
+    }));
+    expect((await doctorBuild(dist)).filter((item) => item.severity === 'error')).toEqual([]);
   });
+
+  it.each(['/app-impersonator/sw.js', 'https://other.test/app/sw.js', '/app/%2e%2e%2foutside.js'])(
+    'rejects a worker URL outside the deployment base: %s', async (serviceWorker) => {
+      const dist = await fixtureDirectory();
+      await writeFixture(dist, 'homeframe-build.json', JSON.stringify({ base: '/app/', serviceWorker }));
+      expect(await doctorBuild(dist)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: 'HF_SW_PATH_INVALID', severity: 'error' }),
+      ]));
+    },
+  );
 
   it('reports a configured worker that is absent instead of assuming sw.js', async () => {
     const dist = await fixtureDirectory();

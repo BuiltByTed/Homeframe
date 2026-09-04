@@ -175,7 +175,11 @@ export function useHomeframeLogout() {
         }
       } catch (reason) { failures.push(reason); }
     }
-    if (checkpoints) clearHomeframeCheckpoints();
+    if (checkpoints) {
+      try { clearHomeframeCheckpoints(); }
+      catch (reason) { failures.push(reason); }
+    }
+    window.dispatchEvent(new Event('homeframe:logout'));
     if (failures.length) throw new AggregateError(failures, 'Homeframe logout cleanup was incomplete.');
   }, [config.notifications, serviceWorker]);
 }
@@ -242,23 +246,43 @@ export function useStateCheckpoint<T>({
   deserialize = JSON.parse,
 }: StateCheckpointOptions<T>): [T, React.Dispatch<React.SetStateAction<T>>] {
   const storageKey = `hf:checkpoint:${version}:${key}`;
-  const target = typeof window === 'undefined'
-    ? null
-    : storage === 'local' ? localStorage : sessionStorage;
-  const [value, setValue] = useState<T>(() => {
+  let target: Storage | null = null;
+  try {
+    if (typeof window !== 'undefined') target = storage === 'local' ? localStorage : sessionStorage;
+  } catch {
+    // Accessing the storage property itself can throw in restricted contexts.
+  }
+  const read = (): T => {
     try {
       const stored = target?.getItem(storageKey);
       return stored == null ? initialValue : deserialize(stored);
     } catch {
       return initialValue;
     }
-  });
+  };
+  const [checkpoint, setCheckpoint] = useState(() => ({ storageKey, storage, target, value: read() }));
+  const matches = checkpoint.storageKey === storageKey
+    && checkpoint.storage === storage && checkpoint.target === target;
+  const current = matches ? checkpoint : { storageKey, storage, target, value: read() };
+  // Restore during render so neither children nor a persistence effect can
+  // observe the old draft under the new identity, even for one commit.
+  if (!matches) setCheckpoint(current);
   useEffect(() => {
     try {
-      target?.setItem(storageKey, serialize(value));
+      current.target?.setItem(current.storageKey, serialize(current.value));
     } catch {
       // Storage may be unavailable or full. The in-memory state remains valid.
     }
-  }, [serialize, storageKey, target, value]);
-  return [value, setValue];
+  }, [serialize, current]);
+  const setValue = useCallback<React.Dispatch<React.SetStateAction<T>>>((update) => {
+    setCheckpoint((previous) => {
+      // An asynchronous callback belonging to another draft cannot edit this one.
+      if (previous.storageKey !== storageKey || previous.storage !== storage || previous.target !== target) return previous;
+      const value = typeof update === 'function'
+        ? (update as (value: T) => T)(previous.value)
+        : update;
+      return Object.is(value, previous.value) ? previous : { ...previous, value };
+    });
+  }, [storageKey, storage, target]);
+  return [current.value, setValue];
 }

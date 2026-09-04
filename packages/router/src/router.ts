@@ -152,6 +152,16 @@ const RESERVED_PERMALINK_PARAMETERS = new Set([
 const MAX_PERMALINK_SCROLL = 10_000_000;
 const MAX_PERMALINK_OFFSET = 10_000;
 const MAX_PERMALINK_ANCHOR_LENGTH = 512;
+const MAX_ROUTE_CACHE_ENTRIES = 100;
+const ROUTE_CACHE_MAX_AGE_MS = 60_000;
+const PREFETCH_MAX_AGE_MS = 30_000;
+const MAX_MANAGED_SNAPSHOTS = 6;
+
+interface RouteCacheEntry {
+  data: unknown;
+  cachedAt: number;
+  prefetched: boolean;
+}
 
 function boundedNumber(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, value));
@@ -273,12 +283,15 @@ export class HomeframeRouter {
   private abortController: AbortController | null = null;
   private loaderAbort: AbortController | null = null;
   private navigationId = 0;
-  private dataCache = new Map<string, unknown>();
+  private dataCache = new Map<string, RouteCacheEntry>();
+  private cacheGeneration = 0;
+  private prefetchControllers = new Map<string, AbortController>();
   private scope: string;
   private historyMode: 'auto' | 'browser' | 'managed';
   private managedHistory = false;
   private managedEntries: ManagedHistoryEntry[] = [];
   private managedPosition = 0;
+  private captureSnapshotAllowed = true;
   private edgeNavigation: false | { edgeWidth: number; commitDistance: number };
   private edgeGesture: EdgeGesture | null = null;
   private edgeNavigationElement: HTMLElement | null = null;
@@ -489,6 +502,8 @@ export class HomeframeRouter {
       void this.navigate(route);
     }, { signal });
 
+    window.addEventListener('homeframe:logout', () => this.invalidate(), { signal });
+
     void this.resolve(
       this.snapshot.url,
       entry.key,
@@ -503,8 +518,7 @@ export class HomeframeRouter {
   stop(): void {
     this.abortController?.abort();
     this.abortController = null;
-    this.loaderAbort?.abort();
-    this.loaderAbort = null;
+    this.invalidate();
     this.resetEdgeGesture();
     this.edgeNavigationElement?.remove();
     this.edgeNavigationElement = null;
@@ -562,15 +576,70 @@ export class HomeframeRouter {
     const url = new URL(to, window.location.href);
     if (!this.canHandle(url)) return;
     const match = matchRoute(this.routes, url.pathname);
-    if (!match?.route.loader || this.dataCache.has(url.href)) return;
+    const cached = this.cachedRoute(url.href);
+    if (!match?.route.loader || (cached?.prefetched && Date.now() - cached.cachedAt < PREFETCH_MAX_AGE_MS)
+      || this.prefetchControllers.has(url.href)) return;
     const controller = new AbortController();
-    const data = await match.route.loader({
-      url,
-      params: match.params,
-      signal: controller.signal,
-      navigationType: 'unknown',
-    });
-    this.dataCache.set(url.href, data);
+    const generation = this.cacheGeneration;
+    const navigationId = this.navigationId;
+    this.prefetchControllers.set(url.href, controller);
+    try {
+      const data = await match.route.loader({
+        url,
+        params: match.params,
+        signal: controller.signal,
+        navigationType: 'unknown',
+      });
+      if (!controller.signal.aborted && generation === this.cacheGeneration && navigationId === this.navigationId) {
+        this.cacheRoute(url.href, data, true);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+    } finally {
+      if (this.prefetchControllers.get(url.href) === controller) this.prefetchControllers.delete(url.href);
+    }
+  }
+
+  /** Clear retained data/scenes and cancel matching work before an identity change or navigation. */
+  invalidate(to?: string | URL): void {
+    const url = to === undefined ? null : new URL(to, this.snapshot.url).href;
+    this.cacheGeneration += 1;
+    for (const controller of this.prefetchControllers.values()) controller.abort();
+    this.prefetchControllers.clear();
+    if (url === null) this.dataCache.clear();
+    else this.dataCache.delete(url);
+    for (const entry of this.managedEntries) {
+      if (url === null || entry.url.href === url) delete entry.snapshot;
+    }
+    this.resetEdgeGesture();
+    if (url === null || url === this.snapshot.url.href) {
+      this.captureSnapshotAllowed = false;
+      this.navigationId += 1;
+      this.loaderAbort?.abort();
+      this.loaderAbort = null;
+    }
+  }
+
+  /** Fetch the current route again while preserving its history entry and scroll. */
+  async revalidate(): Promise<void> {
+    const { url, key, index, state } = this.snapshot;
+    this.invalidate(url);
+    await this.resolve(url, key, index, 'reload', state, 'preserve');
+  }
+
+  private cachedRoute(url: string): RouteCacheEntry | undefined {
+    const entry = this.dataCache.get(url);
+    if (entry && Date.now() - entry.cachedAt < ROUTE_CACHE_MAX_AGE_MS) return entry;
+    this.dataCache.delete(url);
+    return undefined;
+  }
+
+  private cacheRoute(url: string, data: unknown, prefetched: boolean): void {
+    this.dataCache.delete(url);
+    this.dataCache.set(url, { data, cachedAt: Date.now(), prefetched });
+    while (this.dataCache.size > MAX_ROUTE_CACHE_ENTRIES) {
+      this.dataCache.delete(this.dataCache.keys().next().value!);
+    }
   }
 
   back(): void {
@@ -611,7 +680,7 @@ export class HomeframeRouter {
   }
 
   private captureManagedSnapshot(): void {
-    if (!this.managedHistory || typeof document === 'undefined') return;
+    if (!this.managedHistory || !this.captureSnapshotAllowed || typeof document === 'undefined') return;
     const entry = this.managedEntries[this.managedPosition];
     const live = document.querySelector<HTMLElement>('[data-hf-viewport]:not([data-hf-edge-preview-content])');
     if (!entry || !live) return;
@@ -652,6 +721,11 @@ export class HomeframeRouter {
       copy.dataset.hfSnapshotScrollLeft = String(scrollView.scrollLeft);
     });
     entry.snapshot = clone;
+    const retained = this.managedEntries
+      .map((item, position) => ({ item, distance: Math.abs(position - this.managedPosition) }))
+      .filter(({ item }) => item.snapshot)
+      .sort((a, b) => a.distance - b.distance);
+    for (const { item } of retained.slice(MAX_MANAGED_SNAPSHOTS)) delete item.snapshot;
   }
 
   private prepareEdgeGesture(
@@ -667,7 +741,15 @@ export class HomeframeRouter {
     if (!target || typeof document === 'undefined') return null;
 
     this.captureManagedSnapshot();
-    const snapshot = target.snapshot;
+    // Evicted destinations still support gestures. Use the app canvas until
+    // their route has mounted instead of retaining an unbounded DOM history.
+    const snapshot = target.snapshot ?? document.createElement('div');
+    if (!target.snapshot) {
+      snapshot.dataset.hfViewport = '';
+      snapshot.dataset.hfEdgePreviewContent = '';
+      snapshot.setAttribute('aria-hidden', 'true');
+      snapshot.inert = true;
+    }
     const live = document.querySelector<HTMLElement>('[data-hf-viewport]:not([data-hf-edge-preview-content])');
     if (!snapshot || !live) return null;
 
@@ -913,15 +995,23 @@ export class HomeframeRouter {
   ): Promise<void> {
     const id = ++this.navigationId;
     this.loaderAbort?.abort();
-    this.loaderAbort = new AbortController();
+    const controller = new AbortController();
+    this.loaderAbort = controller;
     const match = matchRoute(this.routes, url.pathname);
     if (!match) {
       this.publish({ url, state, key, index, direction, scroll, status: 'not-found', match: null, error: null });
       return;
     }
-    const cached = this.dataCache.get(url.href);
-    const hasCached = this.dataCache.has(url.href);
-    if (hasCached) match.data = cached;
+    const cached = this.cachedRoute(url.href);
+    const traversal = direction === 'back' || direction === 'forward';
+    const hasCached = Boolean(cached && (traversal
+      || (cached.prefetched && Date.now() - cached.cachedAt < PREFETCH_MAX_AGE_MS)));
+    if (hasCached && cached) {
+      match.data = cached.data;
+      cached.prefetched = false;
+      this.dataCache.delete(url.href);
+      this.dataCache.set(url.href, cached);
+    }
     if (!match.route.loader || hasCached) {
       this.publish({ url, state, key, index, direction, scroll, status: 'idle', match, error: null });
       return;
@@ -931,11 +1021,11 @@ export class HomeframeRouter {
       const data = await match.route.loader({
         url,
         params: match.params,
-        signal: this.loaderAbort.signal,
+        signal: controller.signal,
         navigationType: direction,
       });
-      if (id !== this.navigationId) return;
-      this.dataCache.set(url.href, data);
+      if (id !== this.navigationId || controller.signal.aborted) return;
+      this.cacheRoute(url.href, data, false);
       this.publish({
         url,
         state,
@@ -948,12 +1038,13 @@ export class HomeframeRouter {
         error: null,
       });
     } catch (error) {
-      if (id !== this.navigationId || this.loaderAbort.signal.aborted) return;
+      if (id !== this.navigationId || controller.signal.aborted) return;
       this.publish({ url, state, key, index, direction, scroll, status: 'error', match, error });
     }
   }
 
   private publish(patch: Omit<Partial<RouterSnapshot>, 'revision'>): void {
+    if (patch.status && patch.status !== 'loading') this.captureSnapshotAllowed = true;
     const nextUrl = patch.url ?? this.snapshot.url;
     const permalink = nextUrl.href === this.snapshot.url.href
       ? this.snapshot.permalink
