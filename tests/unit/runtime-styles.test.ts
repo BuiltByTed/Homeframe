@@ -43,4 +43,24 @@ describe('runtime structural CSS', () => {
   it('removes a keyboard-covered manual dock from an avoiding attachment anchor', () => {
     expect(styles).toMatch(/data-hf-keyboard-target='dock'[^{}]*data-hf-bottom-keyboard-policy='manual'[^{}]*data-hf-attachment-anchor='dock'[^{}]*data-keyboard-policy='avoid'[^{}]*\{[^}]*bottom:\s*0/s);
   });
+
+  it('places floating windows above chrome and promotes them to full-screen on mobile', () => {
+    expect(styles).toMatch(/\[data-hf-viewport\]\s*\{[^}]*isolation:\s*isolate/s);
+    expect(styles).toMatch(/\[data-hf-shell\]\s*\{[^}]*z-index:\s*0/s);
+    expect(styles).toMatch(/\[data-hf-floating-window-layer\]\s*\{[^}]*z-index:\s*1200[^}]*inset:\s*0/s);
+    expect(styles).toMatch(/@media \(max-width: 900px\)[\s\S]*data-hf-floating-mobile='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*width:\s*100%[^}]*height:\s*100%/s);
+    expect(styles).toMatch(/data-hf-floating-window-layer\]:is\([\s\S]*data-hf-floating-mobile='fullscreen'[\s\S]*\)\s*\{[^}]*top:\s*var\(--hf-viewport-y\)[^}]*left:\s*var\(--hf-viewport-x\)[^}]*width:\s*var\(--hf-viewport-width\)[^}]*height:\s*var\(--hf-viewport-height\)/s);
+    expect(styles).toMatch(/data-hf-floating-mobile='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
+    expect(styles).toMatch(/data-hf-floating-mobile='sheet'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*padding-bottom:\s*var\(--hf-effective-safe-bottom\)/s);
+  });
+
+  it('gives desktop fullscreen windows final ownership of their geometry', () => {
+    expect(styles).toMatch(/data-hf-floating-desktop='fullscreen'[\s\S]*> \[data-hf-floating-window\][^{]*\{[^}]*width:\s*100%\s*!important[^}]*min-width:\s*0\s*!important[^}]*max-width:\s*none\s*!important[^}]*height:\s*100%\s*!important[^}]*min-height:\s*0\s*!important[^}]*max-height:\s*none\s*!important/s);
+  });
+
+  it('allows ordinary desktop selection without weakening compact touch surfaces', () => {
+    expect(styles).not.toMatch(/\[data-hf-selection='allow-desktop'\]\s*\{[^}]*user-select:\s*none[^}]*\}\s*(?![\s\S]*@media)/s);
+    expect(styles).toMatch(/@media \(max-width: 900px\)[\s\S]*\[data-hf-selection='allow-desktop'\]\s*\{[^}]*user-select:\s*none/s);
+    expect(styles).toMatch(/\[data-hf-selection='allow-desktop'\] :is\([\s\S]*\[data-hf-selectable\][\s\S]*\)\s*\{[^}]*user-select:\s*text/s);
+  });
 });

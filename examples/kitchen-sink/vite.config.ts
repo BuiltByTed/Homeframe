@@ -15,5 +15,9 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: true,
+    rolldownOptions: {
+      // Generating the complete asset set is intentional buildStart work.
+      checks: { pluginTimings: false },
+    },
   },
 });

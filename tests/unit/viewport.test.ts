@@ -15,6 +15,7 @@ function installViewport(): MockVisualViewport {
   Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true });
   Object.defineProperty(window, 'innerWidth', { value: 390, configurable: true });
   Object.defineProperty(window, 'innerHeight', { value: 844, configurable: true });
+  Object.defineProperty(navigator, 'maxTouchPoints', { value: 5, configurable: true });
   return viewport;
 }
 
@@ -56,6 +57,49 @@ afterEach(() => {
 });
 
 describe('ViewportController', () => {
+  it('keeps floating-surface editable gestures out of the route scroller', () => {
+    const controller = new ViewportController();
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const routeScroller = document.createElement('div');
+    routeScroller.dataset.hfScrollView = '';
+    shell.append(routeScroller);
+    const surface = document.createElement('section');
+    surface.dataset.hfKeyboardSurface = '';
+    const composer = document.createElement('textarea');
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    editor.dataset.hfKeyboardScroll = '';
+    surface.append(composer, editor);
+    shell.append(surface);
+    document.body.append(shell);
+
+    const primaryScroller = (controller as unknown as {
+      primaryScroller(element: HTMLElement): HTMLElement | null;
+    }).primaryScroller.bind(controller);
+    expect(primaryScroller(composer)).toBeNull();
+    expect(primaryScroller(editor)).toBe(editor);
+  });
+
+  it('does not snap the window while the user owns keyboard scrolling', () => {
+    installViewport();
+    const controller = new ViewportController();
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined);
+    vi.spyOn(window, 'scrollY', 'get').mockReturnValue(48);
+    const internals = controller as unknown as {
+      userOwnsKeyboardScroll: boolean;
+      correctWindowScroll(): void;
+    };
+
+    internals.userOwnsKeyboardScroll = true;
+    internals.correctWindowScroll();
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    internals.userOwnsKeyboardScroll = false;
+    internals.correctWindowScroll();
+    expect(scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
   it('publishes stable viewport geometry and CSS variables before React needs it', async () => {
     installViewport();
     const controller = new ViewportController();
@@ -344,6 +388,29 @@ describe('ViewportController', () => {
     viewport.dispatchEvent(new Event('resize'));
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(controller.getSnapshot().keyboard.phase).toBe('closed');
+    controller.stop();
+  });
+
+  it('does not treat a focused desktop DevTools viewport reduction as a keyboard', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'maxTouchPoints', { value: 0, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    controller.start();
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    document.body.append(input);
+    input.focus();
+
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+
+    expect(controller.getSnapshot().keyboard).toMatchObject({
+      phase: 'closed',
+      height: 0,
+      source: 'none',
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-keyboard-height')).toBe('0px');
     controller.stop();
   });
 
@@ -692,6 +759,8 @@ describe('ViewportController', () => {
       bubbles: true,
       pointerType: 'touch',
     }));
+    expect((controller as unknown as { userOwnsKeyboardScroll: boolean }).userOwnsKeyboardScroll)
+      .toBe(true);
     scroller.scrollTop = 240;
     scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
     // iOS emits these while the same native drag is still in progress. They

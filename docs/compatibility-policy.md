@@ -28,6 +28,8 @@ promise.
 ## Worker, cache, and rollback contract
 
 - The worker URL, scope, manifest `id`, and `start_url` are application identity.
+- Generated manifest and icon URLs include content revisions. Those query values
+  may change with artwork or metadata while the manifest identity remains stable.
   A framework update does not change them. A developer configuration change can,
   so `doctor` treats identity drift as release-blocking migration work.
 - A worker understands its own revisioned precache and declared legacy cache

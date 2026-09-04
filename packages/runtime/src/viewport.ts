@@ -86,6 +86,8 @@ const DOCK_KEYBOARD_TARGET_SELECTOR = [
   '[data-hf-dock]',
   '[data-hf-viewport-attachment][data-hf-attachment-anchor="dock"]',
 ].join(', ');
+const KEYBOARD_SURFACE_SELECTOR = '[data-hf-keyboard-surface]';
+const KEYBOARD_SCROLL_SELECTOR = '[data-hf-keyboard-scroll]';
 
 const defaultViewport: HomeframeViewportSnapshot = {
   width: 0,
@@ -224,9 +226,7 @@ export class ViewportController {
     }, { signal });
     window.addEventListener('pagehide', () => this.suspendKeyboard(), { signal });
     window.addEventListener('scroll', () => {
-      if (window.scrollY !== 0 && (window.visualViewport?.scale ?? 1) <= 1.01) {
-        window.scrollTo(0, 0);
-      }
+      this.correctWindowScroll();
       schedule();
     }, { signal, passive: true });
 
@@ -580,10 +580,24 @@ export class ViewportController {
   }
 
   private primaryScroller(element: HTMLElement): HTMLElement | null {
-    const direct = element.closest<HTMLElement>('[data-hf-scroll-view]');
+    const direct = element.closest<HTMLElement>(
+      `${KEYBOARD_SCROLL_SELECTOR}, [data-hf-scroll-view]`,
+    );
     if (direct) return direct;
+    // A viewport-owned overlay must never transfer an editable drag to the
+    // route scroller behind it. Surfaces can nominate their own scroll owner;
+    // without one, native control scrolling remains local to the overlay.
+    if (element.closest(KEYBOARD_SURFACE_SELECTOR)) return null;
     return element.closest<HTMLElement>('[data-hf-shell]')
       ?.querySelector<HTMLElement>('[data-hf-scroll-view]') ?? null;
+  }
+
+  private correctWindowScroll(): void {
+    if (!this.userOwnsKeyboardScroll
+      && window.scrollY !== 0
+      && (window.visualViewport?.scale ?? 1) <= 1.01) {
+      window.scrollTo(0, 0);
+    }
   }
 
   private captureKeyboardAnchor(element: HTMLElement): void {
@@ -762,14 +776,19 @@ export class ViewportController {
     const previousOpen = this.snapshot.keyboard.phase === 'open'
       || this.snapshot.keyboard.phase === 'opening';
     const previousActive = this.snapshot.keyboard.phase !== 'closed';
+    const visualKeyboardCapable = this.isIosStandalone()
+      || navigator.maxTouchPoints > 0
+      || window.matchMedia?.('(pointer: coarse)').matches === true;
     const meaningfulVisualReduction = visualKeyboardReduction >= threshold && scale <= 1.01;
     const movingVisualReduction = visualKeyboardReduction > 1 && scale <= 1.01;
-    const inferredOpen = Boolean(this.focusedEditable)
+    const inferredOpen = visualKeyboardCapable
+      && Boolean(this.focusedEditable)
       && (meaningfulVisualReduction || (this.keyboardSettling && movingVisualReduction));
     // After blur, WebKit can retain the old visual viewport for several frames.
     // Keep publishing that geometry as `closing` so an avoid dock follows the
     // keyboard instead of falling to the physical bottom prematurely.
-    const inferredClosing = !this.focusedEditable
+    const inferredClosing = visualKeyboardCapable
+      && !this.focusedEditable
       && previousActive
       && movingVisualReduction;
     const hasVirtualKeyboard = virtualKeyboardHeight > 0

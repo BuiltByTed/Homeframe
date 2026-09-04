@@ -100,8 +100,12 @@ export default defineHomeframe({
     backgroundColor: '#172554',
     backgroundColorDark: '#020617',
     icon: './brand/icon-1024.png',
-    // Optional dedicated sources; otherwise Homeframe safely adapts `icon`.
+    // Optional and intentionally opt-in. Omit this to preserve the exact `icon`
+    // silhouette on desktop Chrome/macOS without Chrome-added framing.
     maskableIcon: './brand/icon-maskable-1024.png',
+    // Opaque adaptive-icon canvas; defaults to themeColor (not backgroundColor)
+    // so Chrome/Android do not add a white plate around transparent artwork.
+    maskableIconBackgroundColor: '#172554',
     appleTouchIcon: './brand/icon-ios-1024.png',
   },
   viewport: {
@@ -149,6 +153,20 @@ Passing `sidebar` to `AppShell` enables its desktop grid at 900px while preservi
 ```
 
 Use `useAppSidebar()` inside the sidebar or its footer to read the current `expanded | rail | hidden` mode and call `setMode()` or `cycleMode()`. The controlled `sidebarMode` and `onSidebarModeChange` props are available when layout state belongs in application state. Override `--hf-sidebar-width` and `--hf-sidebar-rail-width` to fit the product; Homeframe narrows both from 900–1099px and hides the desktop sidebar below 900px.
+
+For an established application whose shell DOM must remain intact during
+adoption, set `manualComposition` and place one `AppHeader`, `AppScrollView`,
+and `ViewportDock` yourself. Homeframe still owns shell state, viewport
+geometry, keyboard policy, and portal placement without generating duplicate
+convenience regions.
+
+```tsx
+<AppShell manualComposition className="existing-shell">
+  <AppHeader>{header}</AppHeader>
+  <AppScrollView>{route}</AppScrollView>
+  <ViewportDock keyboard="hide">{navigation}</ViewportDock>
+</AppShell>
+```
 
 ### Deep links and permalinks
 
@@ -260,6 +278,13 @@ notification configuration to keep in sync.
 
 For a complete router and shell composition, follow [examples/kitchen-sink/src/App.tsx](./examples/kitchen-sink/src/App.tsx).
 
+Viewport-owned dialogs and tools can use `FloatingWindow`. Its default desktop
+presentation remains a padded floating panel; set
+`desktopPresentation="fullscreen"` when a maximized tool must occupy the entire
+Homeframe portal above the header, navigation, and every safe-area edge. The
+independent `mobilePresentation="fullscreen" | "sheet"` option continues to own
+the compact/PWA treatment.
+
 ## Headless install and notification UI
 
 Homeframe makes policy and capability state available without imposing a design:
@@ -278,6 +303,11 @@ iOS may prefer the document's generated Apple touch icon over the manifest icon.
 Use `app.appleTouchIcon` when the iOS treatment differs. The generated maskable
 icon uses an opaque app-color canvas and contains source artwork within the
 standard maskable safe circle instead of cropping it silently.
+
+Homeframe content-versions the generated manifest, install icons, Apple touch
+icon, favicon, and startup images in browser metadata. Changing source artwork
+therefore changes the referenced URL and bypasses stale CDN and browser cache
+entries without changing the app's manifest identity.
 
 ## Verification
 

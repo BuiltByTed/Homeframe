@@ -1,5 +1,6 @@
 import {
   Component,
+  Fragment,
   createContext,
   useCallback,
   useContext,
@@ -149,7 +150,7 @@ export class HomeframeErrorBoundary extends Component<HomeframeErrorBoundaryProp
         ? this.props.fallback(this.state.error, retry)
         : this.props.fallback;
     }
-    return <div key={this.state.resetKey}>{this.props.children}</div>;
+    return <Fragment key={this.state.resetKey}>{this.props.children}</Fragment>;
   }
 }
 

@@ -595,6 +595,12 @@ Homeframe treats these as separate problems:
 3. **Resume shield:** a pre-mounted layer used while viewport geometry and required
    application state are restored after `pageshow` or `visibilitychange`.
 
+Applications that want native/installed launch presentation without a branded
+interstitial in ordinary browser tabs MAY set `splash.showInBrowserTabs` to
+`false`. Homeframe MUST establish display mode before parsing the body splash so
+the browser-tab policy cannot itself cause a flash. Generated installed-app
+startup assets remain enabled independently.
+
 All three MUST share a generated color and branding token set. The static splash
 MUST not depend on the service worker being active.
 

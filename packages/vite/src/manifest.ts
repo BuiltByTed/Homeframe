@@ -1,7 +1,26 @@
 import type { HomeframeConfig } from './types.js';
 import { joinBase } from './assets.js';
 
-export function createManifest(config: HomeframeConfig, base: string): Record<string, unknown> {
+export type HomeframeAssetRevisions = Readonly<Record<string, string>>;
+
+export function appendAssetRevision(url: string, revision?: string): string {
+  if (!revision) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(revision)}`;
+}
+
+export function generatedAssetUrl(
+  base: string,
+  fileName: string,
+  revisions: HomeframeAssetRevisions = {},
+): string {
+  return appendAssetRevision(joinBase(base, fileName), revisions[fileName]);
+}
+
+export function createManifest(
+  config: HomeframeConfig,
+  base: string,
+  assetRevisions: HomeframeAssetRevisions = {},
+): Record<string, unknown> {
   const { app } = config;
   const forcedDark = app.colorScheme === 'dark';
   return {
@@ -39,9 +58,12 @@ export function createManifest(config: HomeframeConfig, base: string): Record<st
       protocol_handlers: app.protocolHandlers,
     } : {}),
     icons: [
-      { src: joinBase(base, 'generated/icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
-      { src: joinBase(base, 'generated/icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: joinBase(base, 'generated/icon-maskable-512.png'), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: generatedAssetUrl(base, 'generated/icon-192.png', assetRevisions), sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: generatedAssetUrl(base, 'generated/icon-512.png', assetRevisions), sizes: '512x512', type: 'image/png', purpose: 'any' },
+      ...(app.maskableIcon ? [
+        { src: generatedAssetUrl(base, 'generated/icon-maskable-192.png', assetRevisions), sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+        { src: generatedAssetUrl(base, 'generated/icon-maskable-512.png', assetRevisions), sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      ] : []),
     ],
     ...(app.shortcuts?.length ? {
       shortcuts: app.shortcuts.map((shortcut) => ({
@@ -69,6 +91,9 @@ export function validateConfig(config: HomeframeConfig): void {
       || app.maskableIconPaddingRatio < 0
       || app.maskableIconPaddingRatio >= 0.5)) {
     errors.push('app.maskableIconPaddingRatio must be at least zero and less than 0.5.');
+  }
+  if (!app.maskableIcon && (app.maskableIconPaddingRatio !== undefined || app.maskableIconBackgroundColor !== undefined)) {
+    errors.push('app.maskableIconPaddingRatio and app.maskableIconBackgroundColor require app.maskableIcon.');
   }
   if (app.colorScheme && !['system', 'light', 'dark'].includes(app.colorScheme)) {
     errors.push('app.colorScheme must be system, light, or dark.');
@@ -112,7 +137,7 @@ export function validateConfig(config: HomeframeConfig): void {
     errors.push('security.cspNonce must be a non-empty attribute-safe nonce or server replacement token.');
   }
   const viewport = config.viewport;
-  if (viewport?.selection && !['controls-only', 'allow'].includes(viewport.selection)) errors.push('viewport.selection must be controls-only or allow.');
+  if (viewport?.selection && !['controls-only', 'allow-desktop', 'allow'].includes(viewport.selection)) errors.push('viewport.selection must be controls-only, allow-desktop, or allow.');
   if (viewport?.snapshot && !['preserve', 'brand', 'privacy'].includes(viewport.snapshot)) errors.push('viewport.snapshot must be preserve, brand, or privacy.');
   if (viewport?.bottomDock && !['avoid', 'hide', 'overlay', 'manual'].includes(viewport.bottomDock)) errors.push('viewport.bottomDock must be avoid, hide, overlay, or manual.');
   if (viewport?.keyboardThresholdPx !== undefined && (!Number.isFinite(viewport.keyboardThresholdPx) || viewport.keyboardThresholdPx <= 0)) errors.push('viewport.keyboardThresholdPx must be greater than zero.');

@@ -26,7 +26,7 @@ describe('Homeframe doctor built-output checks', () => {
     expect(isCliEntryPoint(pathToFileURL(target).href, undefined)).toBe(false);
   });
 
-  it('discovers and validates a non-default generated worker path', async () => {
+  it('validates a build without requiring maskable icons', async () => {
     const dist = await fixtureDirectory();
     await writeFixture(dist, 'index.html', `<!doctype html>
       <html><head>
@@ -47,7 +47,6 @@ describe('Homeframe doctor built-output checks', () => {
       icons: [
         { src: '/192.png', sizes: '192x192', purpose: 'any' },
         { src: '/512.png', sizes: '512x512', purpose: 'any' },
-        { src: '/mask.png', sizes: '512x512', purpose: 'maskable' },
       ],
     }));
     await writeFixture(dist, 'homeframe-build.json', JSON.stringify({
@@ -239,6 +238,34 @@ describe('Homeframe source doctor', () => {
         expect.objectContaining({ file: 'src/App.tsx', message: expect.stringContaining('fixed') }),
       ]),
     );
+  });
+
+  it('does not mistake component body class names for document scrolling', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      .addon-modal-body { overflow-y: auto; }
+      .markdown-body pre { overflow: auto; }
+      html[data-theme='dark'] .card-body { overflow: auto; background: black; }
+      .real-content { overflow: auto; }
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_BODY_SCROLL')).toEqual([]);
+    expect(diagnostics.filter((item) => item.code === 'HF_ROOT_BACKGROUND_OWNERSHIP')).toEqual([]);
+  });
+
+  it('still reports scrolling on the actual document roots', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', 'export default {};');
+    await writeFixture(root, 'src/styles.css', `
+      html[data-theme='dark'], body { overflow-y: auto; }
+      :root { background: black; }
+    `);
+
+    const diagnostics = await doctorSource(root);
+    expect(diagnostics.filter((item) => item.code === 'HF_BODY_SCROLL')).toHaveLength(1);
+    expect(diagnostics.filter((item) => item.code === 'HF_ROOT_BACKGROUND_OWNERSHIP')).toHaveLength(1);
   });
 });
 

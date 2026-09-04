@@ -156,6 +156,113 @@ test('uses 16px inputs, keeps the document fixed, and attaches composer above bo
   await expect(page.locator('[data-hf-header]')).toBeVisible();
 });
 
+test('mobile floating windows track the live viewport and keyboard-safe bottom edge', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+
+  const geometry = await page.evaluate(() => {
+    const runtimeStyle = document.getElementById('homeframe-runtime-vars') as HTMLStyleElement;
+    const runtimeRule = runtimeStyle.sheet!.cssRules[0] as CSSStyleRule;
+    const variables = [
+      '--hf-viewport-x',
+      '--hf-viewport-y',
+      '--hf-viewport-width',
+      '--hf-viewport-height',
+      '--hf-safe-bottom',
+      '--hf-effective-safe-bottom',
+    ];
+    const previous = Object.fromEntries(
+      variables.map((name) => [name, runtimeRule.style.getPropertyValue(name)]),
+    );
+    runtimeRule.style.setProperty('--hf-viewport-x', '0px');
+    runtimeRule.style.setProperty('--hf-viewport-y', '120px');
+    runtimeRule.style.setProperty('--hf-viewport-width', '390px');
+    runtimeRule.style.setProperty('--hf-viewport-height', '500px');
+    runtimeRule.style.setProperty('--hf-safe-bottom', '34px');
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', '0px');
+
+    const layer = document.createElement('div');
+    layer.dataset.hfFloatingWindowLayer = '';
+    layer.dataset.hfFloatingMobile = 'fullscreen';
+    layer.dataset.hfFloatingPlacement = 'center';
+    const floatingWindow = document.createElement('section');
+    floatingWindow.dataset.hfFloatingWindow = '';
+    layer.append(floatingWindow);
+    document.body.append(layer);
+
+    const layerStyles = getComputedStyle(layer);
+    const windowStyles = getComputedStyle(floatingWindow);
+    const result = {
+      top: layerStyles.top,
+      width: layerStyles.width,
+      height: layerStyles.height,
+      paddingBottomWithKeyboard: windowStyles.paddingBottom,
+    };
+
+    runtimeRule.style.setProperty('--hf-effective-safe-bottom', '34px');
+    const paddingBottomWithoutKeyboard = getComputedStyle(floatingWindow).paddingBottom;
+    layer.remove();
+    for (const [name, value] of Object.entries(previous)) {
+      runtimeRule.style.setProperty(name, value);
+    }
+    return { ...result, paddingBottomWithoutKeyboard };
+  });
+
+  expect(geometry).toEqual({
+    top: '120px',
+    width: '390px',
+    height: '500px',
+    paddingBottomWithKeyboard: '0px',
+    paddingBottomWithoutKeyboard: '34px',
+  });
+});
+
+test('desktop fullscreen floating windows occupy the complete portal viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+
+  const geometry = await page.evaluate(() => {
+    const portal = document.querySelector<HTMLElement>('[data-hf-portals]')!;
+    const layer = document.createElement('div');
+    layer.dataset.hfFloatingWindowLayer = '';
+    layer.dataset.hfFloatingDesktop = 'fullscreen';
+    layer.dataset.hfFloatingMobile = 'fullscreen';
+    layer.dataset.hfFloatingPlacement = 'bottom-end';
+    const floatingWindow = document.createElement('section');
+    floatingWindow.dataset.hfFloatingWindow = '';
+    floatingWindow.style.width = '780px';
+    floatingWindow.style.minWidth = '720px';
+    floatingWindow.style.maxWidth = '780px';
+    floatingWindow.style.height = '640px';
+    floatingWindow.style.minHeight = '600px';
+    floatingWindow.style.maxHeight = '640px';
+    layer.append(floatingWindow);
+    portal.append(layer);
+
+    const portalRect = portal.getBoundingClientRect();
+    const layerRect = layer.getBoundingClientRect();
+    const windowRect = floatingWindow.getBoundingClientRect();
+    const layerStyle = getComputedStyle(layer);
+    const windowStyle = getComputedStyle(floatingWindow);
+    const result = {
+      portal: [portalRect.left, portalRect.top, portalRect.right, portalRect.bottom],
+      layer: [layerRect.left, layerRect.top, layerRect.right, layerRect.bottom],
+      window: [windowRect.left, windowRect.top, windowRect.right, windowRect.bottom],
+      layerPadding: layerStyle.padding,
+      windowMaxWidth: windowStyle.maxWidth,
+      windowMaxHeight: windowStyle.maxHeight,
+    };
+    layer.remove();
+    return result;
+  });
+
+  expect(geometry.layer).toEqual(geometry.portal);
+  expect(geometry.window).toEqual(geometry.portal);
+  expect(geometry.layerPadding).toBe('0px');
+  expect(geometry.windowMaxWidth).toBe('none');
+  expect(geometry.windowMaxHeight).toBe('none');
+});
+
 test('an avoiding composer follows the keyboard while a manual dock stays covered', async ({ page }) => {
   await navigateFromShell(page, /Keyboard/);
   const geometry = await page.evaluate(() => {
@@ -405,7 +512,13 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   await expect(page.locator('meta[name="viewport"]')).toHaveAttribute('content', /viewport-fit=cover/);
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', /light|dark/);
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).colorScheme)).toContain('light');
-  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute('href', /manifest\.webmanifest\?v=[a-f0-9]{16}$/);
+  await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', /apple-touch-icon\.png\?v=[a-f0-9]{16}$/);
+  await expect(page.locator('link[rel="apple-touch-startup-image"]').first()).toHaveAttribute('href', /\.png\?v=[a-f0-9]{16}$/);
+  expect(manifest.icons).toEqual(expect.arrayContaining([
+    expect.objectContaining({ src: expect.stringMatching(/icon-192\.png\?v=[a-f0-9]{16}$/) }),
+    expect.objectContaining({ src: expect.stringMatching(/icon-512\.png\?v=[a-f0-9]{16}$/) }),
+  ]));
   expect(await page.evaluate(() => window.__HOMEFRAME_BUILD__)).toMatchObject({
     serviceWorkerConfig: { mode: 'automatic', reload: 'safe-point' },
     reactConfig: {

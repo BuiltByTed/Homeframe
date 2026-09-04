@@ -27,14 +27,21 @@ import { HomeframeReadinessProvider, useHomeframeReadiness } from './lifecycle.j
 import { useAppLifecycle } from './hooks.js';
 
 export type SnapshotPolicy = 'preserve' | 'brand' | 'privacy';
+export type SelectionPolicy = 'controls-only' | 'allow-desktop' | 'allow';
+
+export type HomeframeApplicationServerKey = string | (() => string | Promise<string>);
 
 export interface HomeframeNotificationConfig {
-  applicationServerKey?: string;
+  /**
+   * Public VAPID key or an app-owned runtime resolver. A resolver lets an
+   * authenticated application keep subscription authority out of build output.
+   */
+  applicationServerKey?: HomeframeApplicationServerKey;
   transport?: PushSubscriptionTransport | HttpPushSubscriptionTransportOptions;
 }
 
 export interface HomeframeReactConfig {
-  selection?: 'controls-only' | 'allow';
+  selection?: SelectionPolicy;
   snapshot?: SnapshotPolicy;
   viewport?: ViewportRuntimeOptions;
   serviceWorker?: ServiceWorkerClientConfig | false;
@@ -215,15 +222,19 @@ function LifecyclePresentation({
           const geometry = values.map((value) => Math.round(value * 10) / 10).join(':');
           const visualBottom = values[1]! + values[2]!;
           const screenGap = window.screen.height - window.innerHeight;
+          const iosStandalone = root.dataset.hfIosStandalone === 'true';
+          const elapsed = performance.now() - startedAt;
           const closed = root.dataset.hfKeyboard === 'closed'
             && values[4]! <= 1.01
             && Math.abs(visualBottom - window.innerHeight) <= 2
             && values[3]! <= 1
             && window.scrollY === 0
-            && (window.screen.height <= 0 || screenGap <= Math.max(96, viewportSnapshot.safeArea.top * 2));
+            && (!iosStandalone
+              || window.screen.height <= 0
+              || screenGap <= Math.max(96, viewportSnapshot.safeArea.top * 2));
           stableFrames = closed && geometry === previousGeometry ? stableFrames + 1 : closed ? 1 : 0;
           previousGeometry = geometry;
-          if (performance.now() - startedAt < 160 || stableFrames < 3) {
+          if (elapsed < 160 || (stableFrames < 3 && elapsed < 1_500)) {
             frame = requestAnimationFrame(revealStableUpdate);
             return;
           }
