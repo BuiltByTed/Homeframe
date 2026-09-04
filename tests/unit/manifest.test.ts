@@ -66,6 +66,7 @@ describe('manifest generation', () => {
       const optedIn = {
         ...config,
         app: { ...config.app, icon: './icon.svg', maskableIcon: './icon.svg' },
+        splash: { generateAppleStartupImages: false },
       };
       const manifest = createManifest(optedIn, '/');
       expect(manifest.icons).toEqual(expect.arrayContaining([
@@ -92,6 +93,7 @@ describe('manifest generation', () => {
       `);
       const generated = await generateAssets({
         ...config,
+        splash: { generateAppleStartupImages: false },
         app: {
           ...config.app,
           themeColor: '#123456',
