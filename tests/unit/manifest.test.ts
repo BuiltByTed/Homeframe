@@ -121,6 +121,26 @@ describe('manifest generation', () => {
     })).toThrow(/must be inside app.scope/);
   });
 
+  it('honors splash disablement and uses the configured splash logo for the HTML handoff', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'homeframe-launch-assets-'));
+    try {
+      const svg = (fill: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="${fill}"/></svg>`;
+      await writeFile(join(root, 'icon.svg'), svg('#ff0000'));
+      await writeFile(join(root, 'launch.svg'), svg('#00ff00'));
+      const generated = await generateAssets({
+        ...config,
+        splash: { enabled: false, logo: './launch.svg' },
+      }, root, '/');
+      expect(generated.startupLinks).toEqual([]);
+      expect(generated.assets.some((asset) => asset.fileName.includes('splash-'))).toBe(false);
+      const logo = Buffer.from(generated.inlineLogo.split(',')[1]!, 'base64');
+      const pixel = await sharp(logo).extract({ left: 256, top: 256, width: 1, height: 1 }).raw().toBuffer();
+      expect([...pixel]).toEqual([0, 255, 0, 255]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('uses dark launch colors when the app forces dark mode', () => {
     const manifest = createManifest({
       ...config,

@@ -47,6 +47,7 @@ describe('scaffold-homeframe-app', () => {
     expect(packageJson.dependencies['@builtbyted/homeframe']).toBe(homeframePackageJson.version);
     expect(await readFile(join(target, 'index.html'), 'utf8')).toContain('<title>Ted &amp; Co</title>');
     expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).toContain('name: "Ted & Co"');
+    expect(await readFile(join(target, 'homeframe.config.ts'), 'utf8')).not.toContain('maskableIcon');
     const agentContract = await readFile(join(target, 'AGENTS.md'), 'utf8');
     const runbook = await readFile(join(target, 'docs/HOMEFRAME_RUNBOOK.md'), 'utf8');
     expect(agentContract).toContain('Mount `AppShell` above `RouterOutlet`');

@@ -15,8 +15,6 @@ export default defineHomeframe({
     backgroundColor: '#ffffff',
     backgroundColorDark: '#000000',
     icon: './brand/icon.svg',
-    maskableIcon: './brand/icon.svg',
-    maskableIconBackgroundColor: '#0f172a',
   },
   splash: {
     title: __HOMEFRAME_APP_NAME_JSON__,

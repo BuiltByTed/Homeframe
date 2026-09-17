@@ -606,11 +606,20 @@ Homeframe treats these as separate problems:
 3. **Resume shield:** a pre-mounted layer used while viewport geometry and required
    application state are restored after `pageshow` or `visibilitychange`.
 
-Applications that want native/installed launch presentation without a branded
-interstitial in ordinary browser tabs MAY set `splash.showInBrowserTabs` to
-`false`. Homeframe MUST establish display mode before parsing the body splash so
-the browser-tab policy cannot itself cause a flash. Generated installed-app
-startup assets remain enabled independently.
+The branded splash MUST default to installed mobile applications only, including
+tablets. Browser tabs and installed desktop apps MUST skip it. Device detection
+MUST NOT classify a narrow desktop window or touchscreen desktop as mobile.
+Homeframe MUST establish this policy before parsing the body splash and apply it
+to HTML, React, and branded resume surfaces. Applications MAY explicitly opt in
+with `splash.showInBrowserTabs` or `splash.showInDesktopApps`. Both default to
+`false`. `splash.enabled: false` MUST suppress branded presentation and generated
+Apple startup images. Explicit privacy snapshots remain independent.
+
+The native Apple startup image and HTML splash MUST use the same configured logo
+and physical-screen center. For opaque full-screen iOS windows, the HTML handoff
+MUST account for content beginning below the status bar without changing shell
+geometry or re-enabling translucent status-bar mode. Keyboard settlement and
+runtime safe-area measurements MUST NOT move the logo.
 
 All three MUST share a generated color and branding token set. The static splash
 MUST not depend on the service worker being active.
@@ -919,8 +928,8 @@ The manifest generator MUST emit at least:
 - explicit `start_url` and `scope`;
 - `display: "standalone"` by default and configured display overrides;
 - `background_color` and `theme_color`;
-- `icons` including at least 192x192 and 512x512 `any` icons plus a validated
-  512x512 `maskable` icon;
+- `icons` including at least 192x192 and 512x512 `any` icons; validated `maskable`
+  icons are emitted only when the application explicitly configures that source;
 - orientation only when the app explicitly constrains it;
 - optional shortcuts, screenshots, categories, share targets, and protocol
   handlers where configured and supported.

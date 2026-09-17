@@ -9,12 +9,17 @@
     place-items: center;
     background: var(--hf-app-background);
     transition: opacity 160ms ease;
-  }
-
-  :root[data-hf-ready='true']:not([data-hf-splash-visible]) [data-hf-react-splash] {
     visibility: hidden;
     opacity: 0;
     pointer-events: none;
+  }
+
+  :root[data-hf-splash-enabled='true']:not([data-hf-ready='true']) [data-hf-react-splash],
+  :root[data-hf-splash-enabled='true'][data-hf-splash-visible='brand'] [data-hf-react-splash],
+  :root[data-hf-splash-visible='privacy'] [data-hf-react-splash] {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
   }
 
   [data-hf-diagnostics] {

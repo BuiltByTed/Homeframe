@@ -169,6 +169,30 @@ Keep one panel mounted and toggle `open` to preserve content and scroll state.
 Homeframe owns safe areas, keyboard-visible header/footer slots, independent
 scrolling, modal focus, dismissal, and reduced motion. Content remains app-owned.
 
+## Launch defaults
+
+| Launch environment | Branded splash |
+| --- | --- |
+| Desktop browser | Hidden |
+| Installed desktop app | Hidden |
+| Mobile browser | Hidden |
+| Installed mobile app, including tablets | Shown |
+
+Homeframe establishes this policy before first paint and applies it to both the
+HTML and React splash, including branded resume presentation. Explicit opt-ins
+are `splash.showInBrowserTabs: true` and `splash.showInDesktopApps: true`.
+`splash.enabled: false` disables branded presentation and generated Apple startup
+images. Explicit privacy snapshots remain available in every environment.
+
+The generated Apple image and HTML splash use the same `splash.logo` artwork.
+Homeframe accounts for the opaque iOS status-bar origin when positioning the
+HTML logo, independently of shell measurements and keyboard changes.
+
+Install icons default to `purpose: any`, preserving the supplied artwork without
+opting into platform masking. Set `app.maskableIcon` only to request adaptive
+icon treatment. Browser and operating-system icon decoration remains platform
+controlled; there is no universal border-disable manifest flag.
+
 ## iOS status-bar compliance
 
 Starting in 0.1.16, `splash.appleStatusBarStyle` defaults to `default` for both

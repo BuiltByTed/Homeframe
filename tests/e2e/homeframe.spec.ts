@@ -501,9 +501,8 @@ test('generated metadata and worker expose the required PWA contract', async ({ 
   const manifest = await (await request.get('/manifest.webmanifest')).json();
   expect(manifest).toMatchObject({ id: '/', start_url: '/', scope: '/', display: 'standalone' });
   expect(manifest.icons).toEqual(expect.arrayContaining([
-    expect.objectContaining({ sizes: '192x192' }),
-    expect.objectContaining({ sizes: '512x512' }),
-    expect.objectContaining({ purpose: 'maskable' }),
+    expect.objectContaining({ sizes: '192x192', purpose: 'any' }),
+    expect.objectContaining({ sizes: '512x512', purpose: 'any' }),
   ]));
   const worker = await (await request.get('/sw.js')).text();
   expect(worker).toContain('HF_UPDATE_READY');

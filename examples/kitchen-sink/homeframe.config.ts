@@ -23,7 +23,6 @@ export default defineHomeframe({
     backgroundColorDark: '#0b1429',
     colorScheme: 'system',
     icon: './brand/icon.svg',
-    maskableIcon: './brand/icon.svg',
     lang: 'en-US',
     categories: ['productivity', 'utilities'],
     shortcuts: [
@@ -35,8 +34,7 @@ export default defineHomeframe({
     title: 'Homeframe',
     logo: './brand/icon.svg',
     generateAppleStartupImages: true,
-    // Let the shell paint the top safe area so an in-app light/dark override
-    // also updates the installed iOS status-bar surface.
+    // Keep installed iOS status-bar metadata and bootstrap geometry in sync.
     appleStatusBarStyle: 'default',
   },
   viewport: {

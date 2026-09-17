@@ -41,12 +41,11 @@ describe('Homeframe critical CSS', () => {
     expect(css).toContain('--hf-app-background:#010203');
   });
 
-  it('can suppress the branded boot surface in browser tabs without disabling installed launch assets', () => {
-    const configured = config();
-    configured.splash = { showInBrowserTabs: false, generateAppleStartupImages: true };
-    const css = criticalCss(configured);
-
-    expect(css).toContain(':root[data-hf-display-mode=browser] #homeframe-boot-splash');
+  it('keeps both splash surfaces hidden until the head bootstrap permits them', () => {
+    const css = criticalCss(config());
+    expect(css).toContain(':is(#homeframe-boot-splash,[data-hf-react-splash])');
+    expect(css).toContain(':root[data-hf-splash-enabled=true]:not([data-hf-ready=true])');
     expect(css).toContain('visibility:hidden;opacity:0;pointer-events:none');
+    expect(css).toContain(':root[data-hf-splash-visible=privacy]');
   });
 });

@@ -130,11 +130,11 @@ export async function generateAssets(
     addIcon('generated/notification-badge.png', maskable ?? icon, 96, 'notification badge', 0.15),
   ]);
 
-  const inlineLogoBuffer = await iconBuffer(icon, 128);
+  const inlineLogoBuffer = await iconBuffer(splashLogo, 512);
   const inlineLogo = `data:image/png;base64,${inlineLogoBuffer.toString('base64')}`;
   const startupLinks: GeneratedAssetSet['startupLinks'] = [];
 
-  if (config.splash?.generateAppleStartupImages !== false) {
+  if (config.splash?.enabled !== false && config.splash?.generateAppleStartupImages !== false) {
     const scheme = config.app.colorScheme ?? 'system';
     const lightBackground = config.app.backgroundColor;
     const darkBackground = config.app.backgroundColorDark ?? lightBackground;

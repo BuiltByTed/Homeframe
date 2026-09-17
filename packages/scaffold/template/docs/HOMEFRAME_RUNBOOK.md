@@ -150,9 +150,20 @@ layouts with fixed app CSS or another shell/scroller.
 
 Do not style or replace `#homeframe-boot-splash`. `splash.title: ''` intentionally
 generates no title element, and Homeframe keeps the logo centered against the same
-full-screen canvas used by the generated Apple startup image. An app-level
+physical-screen canvas used by the generated Apple startup image, accounting for
+the opaque iOS status bar. Both surfaces use `splash.logo`. An app-level
 `:empty` rule, safe-area offset, viewport measurement, or splash animation is a
 workaround that reintroduces launch movement.
+
+By default, only installed mobile apps show the branded splash. Browser tabs and
+installed desktop apps skip it, including branded resume presentation. Keep
+`showInBrowserTabs` and `showInDesktopApps` unset unless explicitly opting in.
+`splash.enabled: false` also skips Apple startup-image generation. Explicit
+privacy snapshots still cover sensitive content on every platform.
+
+The starter emits `purpose: any` install icons and does not request maskable
+treatment. Add `app.maskableIcon` only when platform masking is intentional.
+No manifest field can disable every browser or operating-system icon decoration.
 
 ## 6. Add a bottom composer or navigation
 

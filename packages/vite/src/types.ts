@@ -44,7 +44,7 @@ export interface HomeframeAppConfig {
   backgroundColorDark?: string;
   colorScheme?: 'system' | 'light' | 'dark';
   icon: string;
-  /** Optional adaptive icon source. Omit it to keep Chrome/macOS from applying its forced mask, padding, and shadow. */
+  /** Optional adaptive icon source. Omit to emit only `purpose: any` icons without opting into platform masking. */
   maskableIcon?: string;
   /** Fraction of each edge reserved around maskable artwork. Defaults to the portable 21.72% safe-circle inset. */
   maskableIconPaddingRatio?: number;
@@ -78,11 +78,14 @@ export interface HomeframeAppConfig {
 }
 
 export interface HomeframeSplashConfig {
+  /** Enable branded launch/resume surfaces and Apple startup images. Defaults to true. */
   enabled?: boolean;
   title?: string;
   logo?: string;
-  /** Keep the branded HTML boot surface hidden in ordinary browser tabs. */
+  /** Show the branded splash in browser tabs. Defaults to false on every device. */
   showInBrowserTabs?: boolean;
+  /** Show the branded splash in installed desktop apps. Defaults to false. */
+  showInDesktopApps?: boolean;
   generateAppleStartupImages?: boolean;
   /** Installed iOS status-bar metadata and bootstrap geometry. Defaults to `default`.
    * Legacy values remain supported for migration but fail doctor compliance.
