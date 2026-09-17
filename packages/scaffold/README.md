@@ -35,6 +35,8 @@ Options:
 - keyboard-aware bottom navigation and a safe editable-control example;
 - typed Homeframe configuration, generated manifest/icons/startup assets, offline
   worker, and atomic safe-point updates;
+- the matching exact framework version and `splash.appleStatusBarStyle: 'default'`,
+  verified against generated metadata/bootstrap by strict doctor;
 - `AGENTS.md` with concise non-negotiable framework boundaries;
 - `docs/HOMEFRAME_RUNBOOK.md` with architecture, implementation workflows, device
   acceptance matrix, release/rollback procedure, and AI handoff prompt;
