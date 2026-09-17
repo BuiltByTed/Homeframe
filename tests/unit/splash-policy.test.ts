@@ -95,7 +95,7 @@ describe('launch policy before first paint', () => {
     const mobile = environment({ ua: 'iPhone', ios: true });
     mobile.run();
     const style = document.documentElement.style;
-    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(100dvh - 50vh - 422px)');
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(363px - 50vh)');
     expect(style.getPropertyValue('--hf-splash-logo-size')).toBe('85.8px');
     expect(style.getPropertyValue('--hf-shell-height')).toBe('');
     style.cssText = '';
@@ -117,9 +117,13 @@ describe('launch policy before first paint', () => {
     expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y')).toBe('');
     property(window, 'innerHeight', 812);
     resize?.(new Event('resize'));
-    // On native iOS, 100vh=874 and 100dvh=812 despite the same screen width.
+    // Native iOS can initially report 100vh=100dvh=874 while innerHeight=812.
     // The resulting -62px translation cancels the native content origin.
     expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y'))
-      .toBe('calc(100dvh - 50vh - 437px)');
+      .toBe('calc(375px - 50vh)');
+    property(window, 'innerHeight', 820);
+    resize?.(new Event('resize'));
+    expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y'))
+      .toBe('calc(383px - 50vh)');
   });
 });

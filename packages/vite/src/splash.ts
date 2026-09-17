@@ -35,19 +35,19 @@ function initializeSplash(policy: SplashPolicy, style: CSSStyleDeclaration): voi
     const longEdge = Math.max(screen.width, screen.height);
     const width = landscape ? longEdge : shortEdge;
     const height = landscape ? shortEdge : longEdge;
-    const key = `${width}:${height}:${window.innerWidth}`;
+    const key = `${width}:${height}:${window.innerWidth}:${window.innerHeight}`;
     if (key === geometryKey) return;
     // A full-screen opaque iOS window starts below the native status bar.
-    // Its large viewport (100vh) can still include that bar, while 100dvh is
-    // the actual content height. Translate from the large viewport's center
-    // to screenHeight / 2 minus the native content origin (screenHeight -
-    // 100dvh). Using 100vh for both heights puts the logo one status bar low.
-    // CSS follows viewport settlement without a delayed JS resize correction.
+    // Its large viewport (100vh) still includes that bar. Even 100dvh can keep
+    // the large height for the first web frames of a native cold launch. Read
+    // the layout viewport now, before paint, instead of waiting for CSS units
+    // to settle. The target is screenHeight / 2 minus the native content origin
+    // (screenHeight - innerHeight); subtract the grid's 50vh center to reach it.
     // Windowed iPad apps use their own canvas instead of the whole display.
     if (width > 0 && Math.abs(window.innerWidth - width) <= 1
       && window.innerHeight >= height * 0.75) {
       geometryKey = key;
-      style.setProperty('--hf-splash-offset-y', `calc(100dvh - 50vh - ${height / 2}px)`);
+      style.setProperty('--hf-splash-offset-y', `calc(${window.innerHeight - height / 2}px - 50vh)`);
       style.setProperty('--hf-splash-logo-size', `${shortEdge * 0.22}px`);
     } else {
       // Do not cache incomplete initial geometry: iOS can settle innerHeight
