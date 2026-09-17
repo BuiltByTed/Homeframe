@@ -171,6 +171,8 @@ scrolling, modal focus, dismissal, and reduced motion. Content remains app-owned
 
 ## Launch defaults
 
+Starting in 0.1.17:
+
 | Launch environment | Branded splash |
 | --- | --- |
 | Desktop browser | Hidden |
