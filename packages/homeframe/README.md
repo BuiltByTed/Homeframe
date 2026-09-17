@@ -79,6 +79,7 @@ export default defineHomeframe({
     backgroundColorDark: '#0f172a',
     icon: './brand/icon.svg',
   },
+  splash: { appleStatusBarStyle: 'default' },
   viewport: {
     // Disable incidental selection everywhere, allow it only on desktop, or
     // retain normal browser selection everywhere.
@@ -145,6 +146,43 @@ its position and size but intentionally supplies no colors, fonts, borders, or
 shadows. `homeframe doctor --strict` reports app-authored fixed/sticky regions
 as `HF_UNTRACKED_VIEWPORT_UI`; the ESLint plugin catches inline versions while
 editing when enabled in the application's ESLint configuration.
+
+## Full-height side panels
+
+Import `SidePanel` from `@builtbyted/homeframe` and compose it through the shell:
+
+```tsx
+<AppShell header={<Header />} sidePanel={
+  <SidePanel open={panelOpen} onOpenChange={setPanelOpen} side="right"
+    aria-label="Workspace tools" header={<PanelTitle />} footer={<PanelActions />}>
+    <PanelContent />
+  </SidePanel>
+}>
+  <AppScrollView>{children}</AppScrollView>
+</AppShell>
+```
+
+The default 400px panel narrows the whole app when at least 720px remains,
+overlays when it does not, and fills the UI below 768px. Configure `width`,
+`minAppWidth`, and `mobileBreakpoint`; use `side="left"` for the other edge.
+Keep one panel mounted and toggle `open` to preserve content and scroll state.
+Homeframe owns safe areas, keyboard-visible header/footer slots, independent
+scrolling, modal focus, dismissal, and reduced motion. Content remains app-owned.
+
+## iOS status-bar compliance
+
+Starting in 0.1.16, `splash.appleStatusBarStyle` defaults to `default` for both
+installation metadata and bootstrap. Set it explicitly when upgrading an app.
+Doctor requires exactly one generated `content="default"` status-bar declaration
+and a matching bootstrap with translucent-mode geometry disabled. Non-default,
+missing, duplicate or unverifiable output fails even without `--strict`.
+Build before running doctor, or provide the deployed `--url`.
+
+Keep the shell/header opaque. Affected older Home Screen installations may need
+removal and re-addition from Safari after protecting local-only data and sign-in
+state; code updates alone may retain old native metadata. Preserve manifest
+identity, scope and worker URL. See the
+[migration guide](https://github.com/BuiltByTed/Homeframe/blob/main/docs/ios-status-bar-migration.md).
 
 ## Package entry points
 

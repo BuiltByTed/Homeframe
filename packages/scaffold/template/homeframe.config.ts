@@ -22,7 +22,7 @@ export default defineHomeframe({
     title: __HOMEFRAME_APP_NAME_JSON__,
     logo: './brand/icon.svg',
     generateAppleStartupImages: true,
-    appleStatusBarStyle: 'black-translucent',
+    appleStatusBarStyle: 'default',
   },
   viewport: {
     selection: 'controls-only',

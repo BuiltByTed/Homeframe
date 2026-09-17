@@ -507,6 +507,17 @@ MUST never scroll the document to do so. Application code can opt out per contro
 
 ### 8.7 Header and dock policies
 
+`AppShell.sidePanel` MUST support one persistent full-height `SidePanel` on the
+physical left or right edge. When its configured width leaves the requested
+minimum app width, it MUST narrow the whole shell including header, navigation,
+content, docks and attachments. Otherwise it MUST overlay; below its mobile
+breakpoint it MUST fill the UI. Opening, closing, resizing and changing sides
+MUST preserve shell/header and panel-content identity. Overlay/fullscreen modes
+MUST contain focus, make the underlying app inert, offer dismissal, restore
+focus, and block managed edge gestures. The panel MUST use runtime geometry,
+support independent scrolling and keyboard-visible header/footer slots, and
+respect reduced motion. Content is application-owned and use-case-neutral.
+
 `<AppHeader>` occupies the top of the stable installed-app shell and includes the
 top safe inset by default. It MUST remain visible and pixel-stable during keyboard
 transitions. In browser mode it remains inside the browser's usable visual
@@ -919,6 +930,22 @@ It MUST warn prominently when an existing installed app changes `id` because tha
 can alter install identity and notification/focus behavior.
 
 ### 12.2 Apple and cross-platform assets
+
+The effective `splash.appleStatusBarStyle` MUST default to `default`, resolved
+once for both installation metadata and bootstrap. Generated HTML MUST contain
+exactly one status-bar declaration with `content="default"` to be compliant.
+The bootstrap MUST publish that same resolved value and disable translucent-mode
+geometry. Doctor MUST fail for non-default settings, missing/duplicate tags,
+unverifiable/mismatched bootstrap or absent output, without requiring `--strict`.
+Legacy explicit values MAY still build with actionable migration warnings and
+their existing geometry support, but MUST NOT be reported as compliant.
+
+Affected older Home Screen installations can retain native metadata across
+worker updates and relaunches. Migration documentation MUST distinguish a
+verified generated/deployed artifact from native installation verification and
+explain data protection before removal/re-addition. App identity and worker
+scope MUST remain stable. See `docs/ios-status-bar-migration.md` for the build
+contract and installation requirements.
 
 From source artwork and splash configuration, the adapter MUST generate:
 

@@ -84,6 +84,10 @@ export interface HomeframeSplashConfig {
   /** Keep the branded HTML boot surface hidden in ordinary browser tabs. */
   showInBrowserTabs?: boolean;
   generateAppleStartupImages?: boolean;
+  /** Installed iOS status-bar metadata and bootstrap geometry. Defaults to `default`.
+   * Legacy values remain supported for migration but fail doctor compliance.
+   * Existing installations may need removal and re-addition to apply this metadata.
+   */
   appleStatusBarStyle?: 'default' | 'black' | 'black-translucent';
 }
 

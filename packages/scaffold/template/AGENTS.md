@@ -36,6 +36,14 @@ that runbook and `homeframe.config.ts` as required project context.
   `@builtbyted/homeframe/vite` adapter generates and owns them.
 - Preserve `app.id`, `app.scope`, `app.startUrl`, and the deployed worker URL once
   the app has users. These values are installation identity, not ordinary config.
+- Keep `splash.appleStatusBarStyle: 'default'`. Doctor must verify exactly one
+  generated status-bar declaration and a matching bootstrap. A source-only check
+  cannot certify installation metadata. Affected older Home Screen installations
+  may need removal and re-addition after protecting local data; never change app
+  identity to force this migration.
+- Use the `AppShell.sidePanel` slot and `SidePanel` for a full-height auxiliary
+  panel on either side. Keep the panel mounted and toggle `open`; Homeframe owns
+  responsive push/overlay/fullscreen layout, focus, safe areas and keyboard sizing.
 - Use `HomeframeInput`, `HomeframeTextarea`, or `HomeframeSelect` for editable
   controls. All rendered editable text must be at least 16 CSS px.
 - Use the Homeframe router, `Link`/`NavLink`, route scroll restoration, and URL

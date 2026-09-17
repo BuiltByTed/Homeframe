@@ -98,6 +98,10 @@ export function validateConfig(config: HomeframeConfig): void {
   if (app.colorScheme && !['system', 'light', 'dark'].includes(app.colorScheme)) {
     errors.push('app.colorScheme must be system, light, or dark.');
   }
+  if (config.splash?.appleStatusBarStyle !== undefined
+    && !['default', 'black', 'black-translucent'].includes(config.splash.appleStatusBarStyle)) {
+    errors.push('splash.appleStatusBarStyle must be default, black, or black-translucent. Use default for iOS header-blur compliance.');
+  }
   if (!isPathWithinScope(app.startUrl, app.scope)) {
     errors.push(`app.startUrl (${app.startUrl}) must be inside app.scope (${app.scope}).`);
   }

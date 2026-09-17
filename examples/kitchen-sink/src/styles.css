@@ -1,3 +1,29 @@
+.demo-side-panel {
+  color: var(--demo-text);
+}
+
+.demo-side-panel > [data-hf-side-panel-header],
+.panel-demo-content,
+.panel-draft {
+  padding: 16px;
+}
+
+.panel-draft {
+  display: grid;
+  gap: 8px;
+}
+
+.panel-draft textarea,
+.panel-demo-content select {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.panel-demo-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--demo-line);
+}
+
 :root {
   --demo-light-edge: #e8f0ff;
   --demo-light-canvas: radial-gradient(circle at 70% -20%, rgb(96 165 250 / 30%), transparent 45%), linear-gradient(180deg, #f8fbff, #edf4ff 42%, #dce8fb);
@@ -201,7 +227,15 @@ select:focus-visible {
 
 .header-title {
   display: grid;
+  flex: 1;
   min-width: 0;
+}
+
+.header-title strong,
+.header-title span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-title strong {
@@ -215,6 +249,7 @@ select:focus-visible {
 
 .icon-button {
   display: grid;
+  flex-shrink: 0;
   width: 44px;
   height: 44px;
   margin-left: auto;
@@ -224,6 +259,10 @@ select:focus-visible {
   color: var(--demo-text);
   background: var(--demo-control);
   text-decoration: none;
+}
+
+.icon-button + .icon-button {
+  margin-left: 0;
 }
 
 .page-scroll {

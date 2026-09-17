@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,41 @@ afterEach(async () => {
 });
 
 describe('Homeframe doctor built-output checks', () => {
+  it.each(['black', 'black-translucent'])('fails source compliance for explicit %s status bars', async (style) => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', `export default { splash: { appleStatusBarStyle: '${style}' } };`);
+    expect(await doctorSource(root)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'HF_IOS_STATUS_BAR', severity: 'error',
+        remediation: expect.stringContaining('removing and re-adding') }),
+    ]));
+  });
+
+  it('fails doctor without --strict when there is no output to verify', async () => {
+    const root = await fixtureDirectory();
+    await writeFixture(root, 'homeframe.config.ts', "export default { splash: { appleStatusBarStyle: 'default' } };");
+    const previousExitCode = process.exitCode;
+    try {
+      await program.parseAsync(['doctor', '--root', root], { from: 'user' });
+      expect(process.exitCode).toBe(1);
+    } finally { process.exitCode = previousExitCode; }
+    const run = spawnSync(process.execPath, ['--import', 'tsx', 'packages/cli/src/index.ts',
+      'doctor', '--root', root], { encoding: 'utf8' });
+    expect(run.status).toBe(1);
+    expect(run.stdout).toContain('HF_IOS_STATUS_BAR_UNVERIFIED');
+    expect(run.stderr).not.toContain('ReferenceError');
+  });
+
+  it('checks other generated HTML documents, including static host fallbacks', async () => {
+    const root = await fixtureDirectory();
+    for (const file of ['404.html', 'routes/detail/index.html']) {
+      await writeFixture(root, `dist/${file}`, '<html><head><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></head><body><div id="homeframe-root"></div></body></html>');
+    }
+    expect(await doctorBuild(join(root, 'dist'))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'HF_IOS_STATUS_BAR', severity: 'error', file: '404.html' }),
+      expect.objectContaining({ code: 'HF_IOS_STATUS_BAR', severity: 'error', file: 'routes/detail/index.html' }),
+    ]));
+  });
+
   it('recognizes the npm .bin symlink as the CLI entrypoint', async () => {
     const root = await fixtureDirectory();
     const target = join(root, 'packages/cli/dist/index.js');
@@ -34,7 +70,8 @@ describe('Homeframe doctor built-output checks', () => {
         <meta name="viewport" content="width=device-width,viewport-fit=cover">
         <link rel="manifest" href="${base}manifest.webmanifest">
         <link rel="apple-touch-icon" href="/generated/apple-touch-icon.png">
-        <script id="homeframe-bootstrap">window.__HOMEFRAME_BUILD__={}</script>
+        <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <script id="homeframe-bootstrap">var edge=false;window.__HOMEFRAME_BUILD__={"appleStatusBarStyle":"default"};</script>
         <script src="${base}assets/app.js"></script>
       </head><body><div id="homeframe-boot-splash"></div></body></html>`);
     await writeFixture(dist, 'manifest.webmanifest', JSON.stringify({

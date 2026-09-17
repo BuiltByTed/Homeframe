@@ -24,6 +24,8 @@ import {
 import { createPortal } from 'react-dom';
 import { getHomeframeRootStyle } from '@builtbyted/runtime';
 import { useHomeframe } from './context.js';
+import { SidePanelLayout } from './side-panel.js';
+import { publishModalState } from './modal-state.js';
 
 type PolymorphicProps<T extends ElementType> = {
   as?: T;
@@ -44,6 +46,8 @@ export function AppViewport<T extends ElementType = 'div'>({
 }
 
 export interface AppShellProps extends HTMLAttributes<HTMLDivElement> {
+  /** One persistent SidePanel. Keep it mounted and toggle its open prop to preserve app/panel state. */
+  sidePanel?: ReactNode;
   as?: ElementType;
   contentAs?: ElementType;
   /**
@@ -186,6 +190,7 @@ function readStoredSidebarMode(
 }
 
 export function AppShell({
+  sidePanel,
   as = 'div',
   contentAs = 'main',
   manualComposition = false,
@@ -294,12 +299,12 @@ export function AppShell({
   if (manualComposition) {
     return (
       <AppSidebarContext.Provider value={sidebarController}>
-        {createElement(as, {
+        <SidePanelComposition panel={sidePanel}>{createElement(as, {
           ...props,
           'data-hf-shell': '',
           'data-hf-manual-composition': '',
           'data-hf-bottom-keyboard-policy': dockPolicy,
-        }, children)}
+        }, children)}</SidePanelComposition>
       </AppSidebarContext.Provider>
     );
   }
@@ -375,7 +380,13 @@ export function AppShell({
         />
       : null,
   );
-  return <AppSidebarContext.Provider value={sidebarController}>{shell}</AppSidebarContext.Provider>;
+  return <AppSidebarContext.Provider value={sidebarController}>
+    <SidePanelComposition panel={sidePanel}>{shell}</SidePanelComposition>
+  </AppSidebarContext.Provider>;
+}
+
+function SidePanelComposition({ panel, children }: { panel: ReactNode; children: ReactNode }) {
+  return panel == null ? children : <SidePanelLayout panel={panel}>{children}</SidePanelLayout>;
 }
 
 const mobileSidebarQuery = '(max-width: 899px)';
@@ -728,14 +739,6 @@ export interface FloatingWindowProps extends HTMLAttributes<HTMLElement> {
   onDismiss?: () => void;
 }
 
-let openFloatingWindows = 0;
-
-function publishFloatingWindowState(open: boolean): void {
-  openFloatingWindows = Math.max(0, openFloatingWindows + (open ? 1 : -1));
-  if (openFloatingWindows > 0) document.documentElement.dataset.hfModal = 'open';
-  else delete document.documentElement.dataset.hfModal;
-}
-
 const FLOATING_WINDOW_FOCUSABLE = [
   'a[href]',
   'button:not([disabled])',
@@ -774,7 +777,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
       const previouslyFocused = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null;
-      if (modal) publishFloatingWindowState(true);
+      if (modal) publishModalState(true);
       const focusFrame = modal
         ? requestAnimationFrame(() => {
             const element = windowRef.current;
@@ -812,7 +815,7 @@ export const FloatingWindow = forwardRef<HTMLElement, FloatingWindowProps>(
       return () => {
         if (focusFrame !== null) cancelAnimationFrame(focusFrame);
         window.removeEventListener('keydown', onKeyDown);
-        if (modal) publishFloatingWindowState(false);
+        if (modal) publishModalState(false);
         if (previouslyFocused?.isConnected) previouslyFocused.focus({ preventScroll: true });
       };
     }, [modal, open]);

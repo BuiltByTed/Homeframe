@@ -8,6 +8,7 @@ export interface HomeframeBuildInfo {
   appId: string;
   buildId: string;
   backgroundColor: string;
+  appleStatusBarStyle?: 'default' | 'black' | 'black-translucent';
   serviceWorkerUrl: string | null;
   serviceWorkerScope: string;
   serviceWorkerConfig?: Record<string, unknown> | false;

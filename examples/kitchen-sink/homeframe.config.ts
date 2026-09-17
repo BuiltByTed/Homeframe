@@ -37,7 +37,7 @@ export default defineHomeframe({
     generateAppleStartupImages: true,
     // Let the shell paint the top safe area so an in-app light/dark override
     // also updates the installed iOS status-bar surface.
-    appleStatusBarStyle: 'black-translucent',
+    appleStatusBarStyle: 'default',
   },
   viewport: {
     selection: 'controls-only',

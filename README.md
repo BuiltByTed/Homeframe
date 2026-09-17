@@ -12,7 +12,7 @@ The same application runs as an installable desktop Chrome PWA. Safari browser m
 | --- | --- |
 | A black, white, or translucent gap appears around the Home indicator. | Roots translucent iOS scenes in the full, keyboard-stable `100vh` canvas, measures all four safe areas, and applies the bottom inset to the dock instead of shortening the page canvas. This avoids WebKit's percentage-height blank strip and adapts to each iPhone rather than assuming a screen size. |
 | Safari content should extend behind browser chrome, but controls must remain reachable. | Browser mode paints edge-to-edge while the header, nav, and composer stay inside the usable visual viewport. |
-| iOS leaves a blurry/translucent strip above the app header. | One persistent `AppShell` and header own and paint the top safe-area backing, including iOS 26’s edge treatment. Routes render inside that shell so navigation cannot briefly expose a detached system blur layer. |
+| iOS leaves a blurry/translucent strip above the app header. | `splash.appleStatusBarStyle: 'default'` generates matching installation metadata and bootstrap geometry. Keep one persistent opaque shell/header. Doctor enforces the generated contract; affected older Home Screen installations may need removal and re-addition. See the [migration guide](./docs/ios-status-bar-migration.md). |
 | Opening the keyboard moves the whole page or makes the header jump down and slide back. | The installed-app shell keeps an immutable origin and size. Homeframe captures the pre-focus scroll anchor and corrects WebKit's hidden layout-viewport pan throughout keyboard settlement; the header never follows `visualViewport.offsetTop`. |
 | Bottom navigation or a text composer teleports when the keyboard opens or closes, or page content shows behind the keyboard. | `ViewportDock keyboard="avoid"` follows measured `visualViewport` geometry frame by frame, continuously removes the Home-indicator inset as the keyboard takes over that edge, and grows an opaque shell mask over the keyboard-owned rectangle. A short linear transition is used only when the browser reports one final geometry jump. |
 | Scrolling a long thread while the keyboard is open makes the app shake or snap back. | A real pointer/touch/wheel gesture transfers the internal scroller to the user. Visual Viewport events continue updating keyboard geometry but cannot restart focus settlement or restore the old scroll anchor while the user owns scrolling. |
@@ -167,6 +167,39 @@ convenience regions.
   <ViewportDock keyboard="hide">{navigation}</ViewportDock>
 </AppShell>
 ```
+
+### Full-height side panels
+
+Use `AppShell.sidePanel` for tools, details, conversations, or other auxiliary UI:
+
+```tsx
+<AppShell
+  header={<Header />}
+  sidePanel={
+    <SidePanel open={panelOpen} onOpenChange={setPanelOpen} side="right"
+      aria-label="Workspace tools" header={<PanelTitle />} footer={<PanelActions />}>
+      <PanelContent />
+    </SidePanel>
+  }
+>
+  <AppScrollView>{children}</AppScrollView>
+</AppShell>
+```
+
+`side="left" | "right"` selects the physical edge. By default, a 400px panel
+narrows the entire shell whenever at least 720px remains for the app. Below that
+it overlays the app; below 768px it fills the UI. Configure these thresholds with
+`width`, `minAppWidth`, and `mobileBreakpoint`. The available shell-container
+width drives the choice, including window resize and zoom.
+
+Keep one `SidePanel` mounted in the slot and change `open`. Its draft/scroll state
+and the existing shell/header DOM survive opening, closing and resizing. The
+body scrolls independently; header/footer slots remain reachable above the
+keyboard. Overlay/fullscreen modes use dialog focus containment, an inert app,
+Escape/backdrop dismissal, and focus restoration. The push presentation lets
+the app remain interactive. Reduced motion is respected. Supply an accessible
+name and app-owned content/styles; `--hf-side-panel-background` controls its
+opaque surface. Import `SidePanel` from `@builtbyted/homeframe`.
 
 ### Deep links and permalinks
 

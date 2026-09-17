@@ -29,6 +29,7 @@ const resolvedVirtualConfigId = '\0virtual:homeframe/config';
 
 export function homeframe(config: HomeframeConfig): Plugin {
   validateConfig(config);
+  const appleStatusBarStyle = config.splash?.appleStatusBarStyle ?? 'default';
   let vite: ResolvedConfig;
   let generated: GeneratedAssetSet | null = null;
   let buildId = '';
@@ -46,6 +47,9 @@ export function homeframe(config: HomeframeConfig): Plugin {
     },
     configResolved(resolved) {
       vite = resolved;
+      if (appleStatusBarStyle !== 'default') this.warn(
+        `HF_IOS_STATUS_BAR: splash.appleStatusBarStyle=${JSON.stringify(appleStatusBarStyle)} does not comply with the verified iOS header-blur fix. Set it to 'default', rebuild and deploy. Affected existing Home Screen installations may need removal and re-addition after protecting local data; preserve manifest identity and scope.`,
+      );
       for (const warning of runtimeCacheOverlapWarnings(config)) this.warn(warning);
       buildId = process.env.HOMEFRAME_BUILD_ID
         ?? `${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${hash(JSON.stringify(config)).slice(0, 8)}`;
@@ -101,7 +105,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
         appId: config.app.id,
         buildId,
         backgroundColor: effectiveBackground(config),
-        appleStatusBarStyle: config.splash?.appleStatusBarStyle ?? 'black',
+        appleStatusBarStyle,
         serviceWorkerUrl,
         serviceWorkerScope: config.app.scope,
         client: clientConfiguration(config, vite.base, config.serviceWorker === false ? undefined : config.serviceWorker, buildId),
@@ -113,7 +117,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
         '<meta name="apple-mobile-web-app-capable" content="yes">',
         '<meta name="mobile-web-app-capable" content="yes">',
         `<meta name="apple-mobile-web-app-title" content="${escapeHtml(config.app.shortName)}">`,
-        `<meta name="apple-mobile-web-app-status-bar-style" content="${config.splash?.appleStatusBarStyle ?? 'black'}">`,
+        `<meta name="apple-mobile-web-app-status-bar-style" content="${appleStatusBarStyle}">`,
         `<meta name="color-scheme" content="${documentColorScheme(config)}">`,
         ...themeColorMetadata(config),
         `<link rel="manifest" href="${manifestHref}">`,
@@ -164,6 +168,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
       if (config.serviceWorker === false || config.serviceWorker?.enabled === false) {
         await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
           appId: config.app.id,
+          appleStatusBarStyle,
           buildId,
           base: vite.base,
           generatedAt: new Date().toISOString(),
@@ -201,6 +206,7 @@ export function homeframe(config: HomeframeConfig): Plugin {
       await writeFile(output, worker);
       await writeFile(resolve(outDir, 'homeframe-build.json'), `${JSON.stringify({
         appId: config.app.id,
+        appleStatusBarStyle,
         buildId,
         base: vite.base,
         generatedAt: new Date().toISOString(),
@@ -407,6 +413,7 @@ function ensureNoConflictingMetadata(html: string): void {
     /<meta[^>]+name=["']viewport["']/i,
     /<link[^>]+rel=["']manifest["']/i,
     /<meta[^>]+name=["']apple-mobile-web-app-capable["']/i,
+    /<meta[^>]+name\s*=\s*(?:["']apple-mobile-web-app-status-bar-style["']|apple-mobile-web-app-status-bar-style(?=[\s/>]))/i,
   ].filter((pattern) => pattern.test(html));
   if (conflicts.length) {
     throw new Error('Homeframe owns viewport, manifest, and installed-app metadata. Remove duplicates from index.html.');
@@ -446,6 +453,7 @@ function bootScript(info: {
     appId: info.appId,
     buildId: info.buildId,
     backgroundColor: info.backgroundColor,
+    appleStatusBarStyle: info.appleStatusBarStyle,
     serviceWorkerUrl: info.serviceWorkerUrl,
     serviceWorkerScope: info.serviceWorkerScope,
     serviceWorkerConfig: info.client.serviceWorker,

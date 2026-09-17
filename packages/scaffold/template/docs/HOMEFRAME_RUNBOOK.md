@@ -128,6 +128,26 @@ identity or abandon the existing worker.
 Do not hand-author generated tags in `index.html`; keep only ordinary document
 content such as charset and title there.
 
+Keep `splash.appleStatusBarStyle: 'default'` and verify the generated output with
+doctor. The installation metadata must contain exactly one status-bar declaration
+with `content="default"`, and the bootstrap must use that same setting with its
+translucent-mode geometry disabled. Legacy `black`/`black-translucent` settings
+fail doctor, even without `--strict`; build before running doctor or pass `--url`.
+
+Opaque shell surfaces alone do not establish the verified header-blur fix.
+Affected older Home Screen installations may retain their native translucent
+status bar through JavaScript updates and cold relaunches. Protect local-only
+data and installation-bound sign-in state before removing and re-adding from
+Safari after deployment. Verify a fresh install and a subsequent code update.
+Preserve installed-app identity and worker scope throughout.
+
+For general full-height auxiliary UI, use `AppShell.sidePanel` with one persistent
+`SidePanel`. Set `side="left"` or `side="right"` and control `open` through
+`onOpenChange`. Its optional header/footer and independently scrolling children
+support any product content. Homeframe narrows the whole app when there is room,
+overlays on narrower desktops, and fills the mobile UI; do not reproduce these
+layouts with fixed app CSS or another shell/scroller.
+
 Do not style or replace `#homeframe-boot-splash`. `splash.title: ''` intentionally
 generates no title element, and Homeframe keeps the logo centered against the same
 full-screen canvas used by the generated Apple startup image. An app-level

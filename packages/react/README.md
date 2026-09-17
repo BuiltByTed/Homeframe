@@ -15,3 +15,12 @@ Existing products can use `<AppShell manualComposition>` when their shell DOM
 must remain stable. Compose `AppHeader`, `AppScrollView`, `ViewportDock`, and
 `HomeframePortal` explicitly inside it; Homeframe marks and coordinates the
 shell without creating duplicate convenience regions.
+
+`AppShell.sidePanel` accepts one persistent `SidePanel` with controlled `open`
+and `onOpenChange` props and `side="left" | "right"`. It reserves its full-height
+width beside the entire app, switches to an overlay when `width + minAppWidth`
+does not fit, and fills the UI below `mobileBreakpoint`. Defaults are 400px,
+720px, and 768px respectively. Supply an accessible name, arbitrary children,
+and optional header/footer slots. Keep it mounted to preserve drafts and scroll.
+Homeframe owns keyboard sizing, safe areas, reduced motion, and modal focus;
+applications own panel content and styling.

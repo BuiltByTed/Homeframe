@@ -18,6 +18,8 @@ export interface Diagnostic {
   line?: number;
 }
 
+const STATUS_BAR_MIGRATION = "Set splash.appleStatusBarStyle to 'default' (or omit it with the current adapter), rebuild and deploy matching HTML/bootstrap/assets/worker. Protect local-only data before removing and re-adding affected Home Screen installations; reloads and worker updates may retain old native metadata. Preserve manifest id, start URL, scope and worker URL. See docs/ios-status-bar-migration.md.";
+
 export const program = new Command();
 program.name('homeframe').description('Build, migrate, and diagnose Homeframe applications.').version('0.1.0');
 
@@ -39,7 +41,9 @@ program.command('doctor')
     const diagnostics = await doctorSource(root);
     const dist = options.dist ? resolve(root, options.dist) : resolve(root, 'dist');
     if (existsSync(dist)) diagnostics.push(...await doctorBuild(dist));
-    else diagnostics.push(info('HF_DIST_MISSING', 'No dist directory was checked.', 'Run the production build, then rerun doctor.'));
+    else if (!options.url) diagnostics.push(error('HF_IOS_STATUS_BAR_UNVERIFIED',
+      'No built or deployed HTML was available to verify the effective iOS status-bar setting.',
+      'Run the production build and rerun doctor, or provide --url for the deployed build.'));
     if (options.url) diagnostics.push(...await doctorDeployment(options.url));
     printDiagnostics(diagnostics, Boolean(options.json));
     const failed = diagnostics.some((item) => item.severity === 'error'
@@ -263,6 +267,15 @@ export async function doctorSource(root: string): Promise<Diagnostic[]> {
       }
     }
     if (/homeframe\.config\.[cm]?[jt]s$/.test(relativeFile)) {
+      for (const match of text.matchAll(/\bappleStatusBarStyle\s*:\s*['"]([^'"]+)['"]/g)) {
+        if (match[1] !== 'default') diagnostics.push(error(
+          'HF_IOS_STATUS_BAR',
+          `splash.appleStatusBarStyle is ${JSON.stringify(match[1])}; compliance requires 'default'.`,
+          STATUS_BAR_MIGRATION,
+          relativeFile,
+          lineAt(text, match.index),
+        ));
+      }
       if (/BEGIN (?:EC |RSA )?PRIVATE KEY|\b(?:VAPID_)?PRIVATE_KEY\b|\bprivateVapidKey\b/i.test(text)) {
         diagnostics.push(error(
           'HF_PUSH_PRIVATE_KEY',
@@ -358,6 +371,7 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
   }
   if (existsSync(indexPath)) {
     const html = builtHtml;
+    diagnostics.push(...doctorStatusBar(html));
     const checks: Array<[string, RegExp, string]> = [
       ['HF_VIEWPORT_META', /viewport-fit=cover/, 'edge-to-edge viewport metadata'],
       ['HF_BOOT_SPLASH', /id="homeframe-boot-splash"/, 'static boot splash'],
@@ -378,6 +392,14 @@ export async function doctorBuild(dist: string): Promise<Diagnostic[]> {
       const count = [...html.matchAll(pattern)].length;
       if (count !== 1) diagnostics.push(error('HF_METADATA_DUPLICATE', `Built HTML contains ${count} ${label} declarations.`, 'Remove app-authored duplicates and rebuild.'));
     }
+  }
+  // Multi-page builds and static-host fallbacks must carry the same contract.
+  for (const path of await walk(dist, (path) => extname(path) === '.html' && path !== indexPath, true)) {
+    const html = await readFile(path, 'utf8');
+    if (!/homeframe-(?:bootstrap|root)/.test(html)) continue;
+    diagnostics.push(...doctorStatusBar(html).map((diagnostic) => ({
+      ...diagnostic, file: relative(dist, path),
+    })));
   }
   if (existsSync(manifestPath)) {
     try {
@@ -555,6 +577,7 @@ export async function doctorDeployment(urlValue: string): Promise<Diagnostic[]> 
   }
 
   const htmlType = htmlResponse.headers.get('content-type') ?? '';
+  diagnostics.push(...doctorStatusBar(html));
   if (!/text\/html/i.test(htmlType)) diagnostics.push(error('HF_HTML_CONTENT_TYPE', `Document Content-Type is ${htmlType || '(missing)'}.`, 'Serve the application document as text/html.'));
   const htmlCache = htmlResponse.headers.get('cache-control') ?? '';
   if (!/no-cache|max-age=0|must-revalidate/i.test(htmlCache)) {
@@ -746,17 +769,49 @@ function attributeFromTag(
 
 function attributeFromRawTag(tag: string, name: string): string | null {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`\\b${escaped}\\s*=\\s*["']([^"']*)["']`, 'i').exec(tag)?.[1] ?? null;
+  const match = new RegExp(`\\s${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i').exec(tag);
+  return match ? match[1] ?? match[2] ?? match[3] ?? null : null;
 }
 
-function parseBootBuildInfo(html: string): { serviceWorkerUrl?: string | null } | null {
+function parseBootBuildInfo(html: string): { serviceWorkerUrl?: string | null; appleStatusBarStyle?: string } | null {
   const match = /window\.__HOMEFRAME_BUILD__=(\{.*?\});/.exec(html);
   if (!match?.[1]) return null;
   try {
-    return JSON.parse(match[1]) as { serviceWorkerUrl?: string | null };
+    return JSON.parse(match[1]) as { serviceWorkerUrl?: string | null; appleStatusBarStyle?: string };
   } catch {
     return null;
   }
+}
+
+
+/** Inspect the output actually shipped, including dynamic/imported configuration. */
+export function doctorStatusBar(html: string): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const withoutComments = html.replace(/<!--[\s\S]*?-->/g, '');
+  const markup = withoutComments.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '');
+  const tags = (markup.match(/<meta\b[^>]*>/gi) ?? []).filter((tag) =>
+    attributeFromRawTag(tag, 'name')?.toLowerCase() === 'apple-mobile-web-app-status-bar-style');
+  if (tags.length !== 1) diagnostics.push(error(
+    'HF_IOS_STATUS_BAR',
+    `HTML contains ${tags.length} iOS status-bar declarations; exactly one with content="default" is required.`,
+    `Remove app-authored status-bar tags and let Homeframe generate the only declaration. ${STATUS_BAR_MIGRATION}`,
+  ));
+  else if (attributeFromRawTag(tags[0]!, 'content') !== 'default') diagnostics.push(error(
+    'HF_IOS_STATUS_BAR',
+    'The generated iOS status-bar declaration does not have content="default".',
+    STATUS_BAR_MIGRATION,
+  ));
+  const scripts = [...withoutComments.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
+    .filter((match) => attributeFromRawTag(`<script${match[1]}>`, 'id') === 'homeframe-bootstrap');
+  const bootstrap = scripts.length === 1 ? scripts[0]![2]! : '';
+  if (parseBootBuildInfo(bootstrap)?.appleStatusBarStyle !== 'default'
+    || !/\bedge\s*=\s*false\s*[,;]/.test(bootstrap)
+    || /\bedge\s*=\s*true\b/.test(bootstrap)) diagnostics.push(error(
+    'HF_IOS_STATUS_BAR_BOOTSTRAP',
+    'The Homeframe bootstrap does not verify the default status bar with translucent-mode geometry disabled.',
+    `Upgrade the pinned Homeframe version and regenerate the output; do not patch generated HTML. ${STATUS_BAR_MIGRATION}`,
+  ));
+  return diagnostics;
 }
 
 function firstHashedAssetUrl(html: string, base: URL): URL | null {
@@ -1011,13 +1066,13 @@ async function doctorRenderedControls(base: URL): Promise<Diagnostic[]> {
   return diagnostics;
 }
 
-async function walk(root: string, include: (path: string) => boolean): Promise<string[]> {
+async function walk(root: string, include: (path: string) => boolean, includeDist = false): Promise<string[]> {
   const output: string[] = [];
   async function visit(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = resolve(directory, entry.name);
       if (entry.isDirectory()) {
-        if (!path.includes('/node_modules/') && !path.includes('/.git/') && !path.includes('/dist/')) await visit(path);
+        if (!path.includes('/node_modules/') && !path.includes('/.git/') && (includeDist || !path.includes('/dist/'))) await visit(path);
       } else if (entry.isFile() && include(path)) output.push(path);
     }
   }

@@ -24,6 +24,7 @@ import {
   KeyboardDock,
   NoCallout,
   SelectableText,
+  SidePanel,
   useAppBadge,
   useAppSidebar,
   useAppLifecycle,
@@ -196,6 +197,8 @@ function useThemePreference() {
 }
 
 function ApplicationShell() {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelSide, setPanelSide] = useState<'left' | 'right'>('right');
   const route = useRouterSnapshot();
   const { scrollKey, direction, permalinkScroll } = useRouteScrollRestoration();
   const [headerPlacement, setHeaderPlacement] = useStateCheckpoint<AppHeaderPlacement>({
@@ -212,7 +215,36 @@ function ApplicationShell() {
   return (
     <AppViewport className="app-viewport">
       <AppShell
-        header={<Header />}
+        header={<Header onOpenPanel={() => setPanelOpen(true)} />}
+        sidePanel={(
+          <SidePanel
+            open={panelOpen}
+            onOpenChange={setPanelOpen}
+            side={panelSide}
+            aria-label="Workspace panel"
+            className="demo-side-panel"
+            header={<strong>Workspace panel</strong>}
+            footer={<label className="panel-draft">Draft<HomeframeTextarea aria-label="Panel draft" placeholder="Keep a note while you browse…" rows={3} /></label>}
+          >
+            <div className="panel-demo-content">
+              <p>A place for tools, details, notes, conversations, or anything your app needs alongside its main view.</p>
+              <label>Panel side
+                <HomeframeSelect aria-label="Panel side" value={panelSide} onChange={(event) => setPanelSide(event.target.value as 'left' | 'right')}>
+                  <option value="left">Left</option>
+                  <option value="right">Right</option>
+                </HomeframeSelect>
+              </label>
+              <p>Resize the window: the whole app makes room on wide screens, the panel overlays on narrower desktops, and it fills the UI on mobile.</p>
+              <p>Close and reopen the panel to check that your draft and scroll position remain intact.</p>
+              {Array.from({ length: 16 }, (_, index) => (
+                <article className="panel-demo-item" key={index}>
+                  <h3>Workspace item {index + 1}</h3>
+                  <p>Panel content scrolls independently. The header and draft stay reachable while the keyboard is open.</p>
+                </article>
+              ))}
+            </div>
+          </SidePanel>
+        )}
         headerPlacement={headerPlacement}
         sidebar={<DesktopSidebar />}
         sidebarFooter={(
@@ -248,7 +280,7 @@ function ApplicationShell() {
   );
 }
 
-function Header() {
+function Header({ onOpenPanel }: { onOpenPanel: () => void }) {
   const keyboard = useKeyboard();
   const display = useDisplayMode();
   return (
@@ -258,6 +290,7 @@ function Header() {
         <strong>Homeframe</strong>
         <span>v{__HOMEFRAME_VERSION__} · {display} · keyboard {keyboard.phase}</span>
       </div>
+      <button type="button" className="icon-button" aria-label="Open side panel" title="Open side panel" onClick={onOpenPanel}>▥</button>
       <Link to={appPath('/settings')} className="icon-button" aria-label="Settings">⚙</Link>
     </header>
   );

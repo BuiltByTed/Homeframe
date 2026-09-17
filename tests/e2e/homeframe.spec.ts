@@ -600,7 +600,7 @@ test('preserve snapshot policy does not reinsert the brand icon on foreground', 
 });
 
 test('settings can force and persist light, dark, or system appearance', async ({ page }) => {
-  await page.locator('.icon-button').click();
+  await page.locator('[data-hf-header]').getByRole('link', { name: 'Settings' }).click();
   const appearance = page.getByRole('combobox', { name: 'Appearance' });
   await expect(appearance).toHaveValue('system');
 
