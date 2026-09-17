@@ -15,6 +15,7 @@ function property(object: object, name: string, value: unknown) {
 afterEach(() => {
   restore.splice(0).reverse().forEach((reset) => reset());
   delete document.documentElement.dataset.hfSplashEnabled;
+  document.documentElement.style.cssText = '';
 });
 
 function environment({ ua = 'Chrome Windows', mode = 'browser', ios = false, touch = 0, platform = 'Win32' } = {}) {
@@ -94,11 +95,31 @@ describe('launch policy before first paint', () => {
     const mobile = environment({ ua: 'iPhone', ios: true });
     mobile.run();
     const style = document.documentElement.style;
-    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc((100vh - 844px) / 2)');
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(100dvh - 50vh - 422px)');
     expect(style.getPropertyValue('--hf-splash-logo-size')).toBe('85.8px');
     expect(style.getPropertyValue('--hf-shell-height')).toBe('');
     style.cssText = '';
     mobile.run({ appleStatusBarStyle: 'black-translucent' });
     expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('');
+  });
+
+  it('retries incomplete cold-launch geometry when only the content height settles', () => {
+    property(screen, 'width', 402);
+    property(screen, 'height', 874);
+    property(window, 'innerWidth', 402);
+    property(window, 'innerHeight', 0);
+    const mobile = environment({ ua: 'iPhone', ios: true });
+    let resize: EventListener | undefined;
+    vi.mocked(window.addEventListener).mockImplementation((event: string, listener: EventListenerOrEventListenerObject) => {
+      if (event === 'resize' && typeof listener === 'function') resize = listener;
+    });
+    mobile.run();
+    expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y')).toBe('');
+    property(window, 'innerHeight', 812);
+    resize?.(new Event('resize'));
+    // On native iOS, 100vh=874 and 100dvh=812 despite the same screen width.
+    // The resulting -62px translation cancels the native content origin.
+    expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y'))
+      .toBe('calc(100dvh - 50vh - 437px)');
   });
 });
