@@ -15,6 +15,7 @@ function property(object: object, name: string, value: unknown) {
 afterEach(() => {
   restore.splice(0).reverse().forEach((reset) => reset());
   delete document.documentElement.dataset.hfSplashEnabled;
+  delete document.documentElement.dataset.hfKeyboard;
   document.documentElement.style.cssText = '';
 });
 
@@ -125,5 +126,61 @@ describe('launch policy before first paint', () => {
     resize?.(new Event('resize'));
     expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y'))
       .toBe('calc(383px - 50vh)');
+  });
+
+  it('keeps the launch center when the layout height briefly includes the opaque status bar', () => {
+    property(screen, 'width', 402);
+    property(screen, 'height', 874);
+    property(window, 'innerWidth', 402);
+    property(window, 'innerHeight', 874);
+    const visual = new EventTarget();
+    Object.assign(visual, { width: 402, height: 812, scale: 1, offsetTop: 0 });
+    property(window, 'visualViewport', visual);
+    const mobile = environment({ ua: 'iPhone', ios: true });
+    mobile.run();
+    expect(document.documentElement.style.getPropertyValue('--hf-splash-offset-y'))
+      .toBe('calc(375px - 50vh)');
+  });
+
+  it('settles from visual-viewport events without moving the launch logo for a keyboard', () => {
+    property(screen, 'width', 402);
+    property(screen, 'height', 874);
+    property(window, 'innerWidth', 402);
+    property(window, 'innerHeight', 874);
+    const visual = new EventTarget();
+    Object.assign(visual, { width: 402, height: 874, scale: 1, offsetTop: 0 });
+    property(window, 'visualViewport', visual);
+    environment({ ua: 'iPhone', ios: true }).run();
+    Object.assign(visual, { height: 812 });
+    visual.dispatchEvent(new Event('resize'));
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(375px - 50vh)');
+    document.documentElement.dataset.hfKeyboard = 'open';
+    property(window, 'innerHeight', 500);
+    Object.assign(visual, { height: 500 });
+    visual.dispatchEvent(new Event('resize'));
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(375px - 50vh)');
+  });
+
+  it('ignores zoomed visual viewports and keeps windowed tablets on their own canvas', () => {
+    property(screen, 'width', 402);
+    property(screen, 'height', 874);
+    property(window, 'innerWidth', 402);
+    property(window, 'innerHeight', 812);
+    const visual = new EventTarget();
+    Object.assign(visual, { width: 201, height: 406, scale: 2, offsetTop: 0 });
+    property(window, 'visualViewport', visual);
+    const mobile = environment({ ua: 'iPhone', ios: true });
+    mobile.run();
+    const style = document.documentElement.style;
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('calc(375px - 50vh)');
+    property(screen, 'width', 1024);
+    property(screen, 'height', 1366);
+    property(window, 'innerWidth', 700);
+    property(window, 'innerHeight', 900);
+    Object.assign(visual, { width: 700, height: 900, scale: 1 });
+    visual.dispatchEvent(new Event('resize'));
+    expect(style.getPropertyValue('--hf-splash-offset-y')).toBe('');
+    expect(style.getPropertyValue('--hf-splash-logo-size')).toBe('');
   });
 });

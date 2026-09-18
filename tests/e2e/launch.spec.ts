@@ -92,6 +92,26 @@ test('desktop privacy snapshots still cover content without showing the launch i
   await expect(page.locator('#homeframe-boot-splash img')).toBeHidden();
 });
 
+test('a stale layout height cannot push the opaque launch logo below its native center', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+  });
+  await launch(page, { mobile: true, installed: true, height: 785 });
+  const logo = page.locator('#homeframe-boot-splash img');
+  const center = async () => {
+    const box = await logo.boundingBox();
+    return box!.y + box!.height / 2;
+  };
+  await expect.poll(center).toBeCloseTo(363, 0);
+  for (const reportedHeight of [785, 844, 785]) {
+    await page.evaluate(height => {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: height });
+      window.dispatchEvent(new Event('resize'));
+    }, reportedHeight);
+    await expect.poll(center).toBeCloseTo(363, 0);
+  }
+});
+
 test('the installed-app manifest does not opt into icon masking', async ({ request }) => {
   const response = await request.get('/manifest.webmanifest');
   expect(response.ok()).toBe(true);
