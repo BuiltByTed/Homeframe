@@ -774,6 +774,123 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('holds fixed-viewport and dock geometry while the user owns keyboard scrolling', async () => {
+    const viewport = installViewport();
+    Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 852, configurable: true });
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const shell = document.createElement('div');
+    shell.dataset.hfShell = '';
+    const scroller = document.createElement('div');
+    scroller.dataset.hfScrollView = '';
+    const pageContent = document.createElement('div');
+    scroller.append(pageContent);
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    dock.append(input);
+    shell.append(scroller, dock);
+    document.body.append(shell);
+    controller.start();
+
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().keyboard.phase).toBe('open');
+    });
+
+    // The user touches the list (not an editable) and starts scrolling.
+    pageContent.dispatchEvent(new PointerEvent('pointerdown', {
+      bubbles: true,
+      pointerType: 'touch',
+    }));
+    scroller.scrollTop = 240;
+    scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+
+    // WebKit keeps publishing live geometry while the drag is in progress:
+    // the standalone layout viewport pans and the visual viewport re-frames
+    // around the stationary keyboard.
+    viewport.pageTop = 24;
+    viewport.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    viewport.height = 498;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    viewport.pageTop = 9;
+    viewport.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    // The committed geometry must not follow the live jitter: the fixed
+    // viewport and the avoiding dock stay put under the user's finger.
+    expect(scroller.scrollTop).toBe(240);
+    expect(controller.getSnapshot()).toMatchObject({
+      pageTop: 0,
+      keyboard: { phase: 'open', height: 344 },
+    });
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('0px');
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+
+    // The gesture releases; after the hold tail, live tracking resumes and
+    // the true rest geometry commits.
+    viewport.pageTop = 64;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 950)); // > 700ms hold tail
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(controller.getSnapshot()).toMatchObject({ pageTop: 64 });
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('64px');
+
+    controller.stop();
+    Object.defineProperty(navigator, 'standalone', { value: false, configurable: true });
+    Object.defineProperty(window.screen, 'height', { value: 0, configurable: true });
+  });
+
+  it('absorbs sub-3px visual-viewport jitter around a settled open keyboard', async () => {
+    const viewport = installViewport();
+    const controller = new ViewportController({ settleDelaysMs: [1, 2] });
+    const dock = document.createElement('div');
+    dock.dataset.hfDock = '';
+    const input = document.createElement('input');
+    input.style.fontSize = '16px';
+    dock.append(input);
+    document.body.append(dock);
+    controller.start();
+
+    input.focus();
+    viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await vi.waitFor(() => {
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+    });
+
+    // WebKit re-frames the visual viewport a couple of pixels around the
+    // stationary keyboard; the dock must not chase it.
+    viewport.height = 498;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+    expect(document.documentElement.dataset.hfKeyboard).toBe('open');
+
+    viewport.height = 502;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+    expect(document.documentElement.dataset.hfKeyboard).toBe('open');
+
+    // A real keyboard close still commits.
+    input.blur();
+    viewport.height = 844;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(controller.getSnapshot().keyboard).toMatchObject({ phase: 'closed', height: 0 });
+    expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('0px');
+    controller.stop();
+  });
+
   it('raises the editable-text minimum when the initial viewport is scaled down', async () => {
     const viewport = installViewport();
     viewport.scale = 0.75;

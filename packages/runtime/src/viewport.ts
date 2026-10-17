@@ -139,6 +139,22 @@ function closeEnough(a: number, b: number): boolean {
   return Math.abs(a - b) < 0.5;
 }
 
+/**
+ * WebKit keeps the visual viewport in motion for a few hundred milliseconds
+ * after a user's scroll gesture ends (momentum, re-framing around the open
+ * keyboard). Committed keyboard geometry is held for that tail before live
+ * tracking resumes, so the dock and fixed viewport settle once instead of
+ * chasing every re-frame.
+ */
+const USER_SCROLL_HOLD_MS = 700;
+
+/**
+ * Live samples that stay within this band of the last committed keyboard
+ * height are WebKit jitter, not keyboard motion: real keyboard movement
+ * changes tens of pixels per frame, so tracking is unaffected.
+ */
+const KEYBOARD_HEIGHT_DEADBAND_PX = 3;
+
 export class ViewportController {
   private options: Required<ViewportRuntimeOptions>;
   private snapshot: HomeframeViewportSnapshot = defaultViewport;
@@ -159,6 +175,7 @@ export class ViewportController {
   private keyboardCorrectionTimer = 0;
   private keyboardSettling = false;
   private userOwnsKeyboardScroll = false;
+  private userOwnsAt = 0;
   private correctingKeyboardScroll = false;
   /** Native points exposed by an edge-to-edge standalone scene but omitted
    * from WebKit's closed visual/layout viewport. */
@@ -318,6 +335,7 @@ export class ViewportController {
         if (Math.abs(deltaY) <= 8) return;
         drag.dragging = true;
         this.userOwnsKeyboardScroll = true;
+        this.userOwnsAt = Date.now();
         this.keyboardSettling = false;
         this.stopKeyboardCorrection();
       }
@@ -390,6 +408,7 @@ export class ViewportController {
         && this.snapshot.keyboard.phase === 'closed') return;
       if (!this.keyboardSettling && this.snapshot.keyboard.phase === 'closed') return;
       this.userOwnsKeyboardScroll = true;
+      this.userOwnsAt = Date.now();
       this.keyboardSettling = false;
       this.rememberKeyboardScroll();
       this.stopKeyboardCorrection();
@@ -411,6 +430,9 @@ export class ViewportController {
     });
     document.addEventListener('scroll', () => {
       if (this.correctingKeyboardScroll || (this.keyboardSettling && !this.userOwnsKeyboardScroll)) return;
+      // A scroll that reaches here is the user's own (gesture or momentum):
+      // extend the geometry hold while the scroller keeps moving.
+      if (this.userOwnsKeyboardScroll) this.userOwnsAt = Date.now();
       this.rememberKeyboardScroll();
     }, { signal, capture: true, passive: true });
 
@@ -454,6 +476,7 @@ export class ViewportController {
     delete document.documentElement.dataset.hfKeyboardOcclusion;
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
+    this.userOwnsAt = 0;
     this.installedFrameInset = 0;
   }
 
@@ -490,6 +513,7 @@ export class ViewportController {
     this.stopKeyboardCorrection();
     this.keyboardSettling = false;
     this.userOwnsKeyboardScroll = false;
+    this.userOwnsAt = 0;
     this.keyboardAnchor = null;
     this.setKeyboardTarget('none');
     this.keyboardMotion = 'idle';
@@ -660,6 +684,7 @@ export class ViewportController {
     }
     this.keyboardSettling = true;
     this.userOwnsKeyboardScroll = false;
+    this.userOwnsAt = 0;
     if (this.keyboardCorrectionTimer) window.clearTimeout(this.keyboardCorrectionTimer);
     this.keyboardCorrectionTimer = window.setTimeout(() => {
       this.keyboardCorrectionTimer = 0;
@@ -688,9 +713,16 @@ export class ViewportController {
       this.correctingKeyboardScroll = false;
     }
     if ((window.visualViewport?.scale ?? 1) <= 1.01) window.scrollTo(0, 0);
+    // While the user owns the scroll the correction loop must not chase the
+    // live layout pan; it would re-anchor the viewport against the user's own
+    // gesture. measure() holds the committed value meanwhile, and after the
+    // gesture releases the loop reads live values again.
+    const pageTop = this.userOwnsKeyboardScroll
+      ? this.snapshot.pageTop
+      : this.readPageTop();
     getHomeframeRootStyle().setProperty(
       '--hf-layout-viewport-top',
-      `${this.snapshot.keyboard.phase === 'closed' ? 0 : this.readPageTop()}px`,
+      `${this.snapshot.keyboard.phase === 'closed' ? 0 : pageTop}px`,
     );
     this.keyboardCorrectionFrame = requestAnimationFrame(() => this.correctKeyboardPan());
   }
@@ -720,6 +752,14 @@ export class ViewportController {
   }
 
   private measure(force: boolean): void {
+    // User scroll ownership is a gesture window, not a latch: once the last
+    // user input (touch, wheel, or scroller movement) is older than the hold
+    // tail, live tracking resumes and the true rest geometry can commit.
+    if (this.userOwnsKeyboardScroll
+      && Date.now() - this.userOwnsAt > USER_SCROLL_HOLD_MS) {
+      this.userOwnsKeyboardScroll = false;
+      this.userOwnsAt = 0;
+    }
     const visual = window.visualViewport;
     const layoutWidth = document.documentElement.clientWidth || window.innerWidth;
     const layoutHeight = document.documentElement.clientHeight || window.innerHeight;
@@ -793,12 +833,21 @@ export class ViewportController {
       && movingVisualReduction;
     const hasVirtualKeyboard = virtualKeyboardHeight > 0
       && (Boolean(this.focusedEditable) || previousActive);
-    const keyboardHeight = hasVirtualKeyboard
+    const rawKeyboardHeight = hasVirtualKeyboard
       ? virtualKeyboardHeight
       : inferredOpen || inferredClosing ? visualKeyboardHeight : 0;
     const keyboardSource = hasVirtualKeyboard
       ? 'virtual-keyboard' as const
       : inferredOpen || inferredClosing ? 'visual-viewport' as const : 'none' as const;
+    // WebKit re-frames the visual viewport a few pixels around a stationary
+    // keyboard (after gestures and around the keyboard itself). Publishing
+    // 1-2 px dock offsets re-transforms the avoiding dock and shifts the
+    // visible content under the user's finger. Hold the last committed height
+    // while the live sample stays inside the deadband; real keyboard motion
+    // moves tens of pixels per frame, so tracking is unaffected.
+    const keyboardHeight = Math.abs(
+      rawKeyboardHeight - this.snapshot.keyboard.height,
+    ) < KEYBOARD_HEIGHT_DEADBAND_PX ? this.snapshot.keyboard.height : rawKeyboardHeight;
 
     let keyboardPhase: KeyboardPhase;
     if (keyboardHeight > 0) {
@@ -843,6 +892,21 @@ export class ViewportController {
       },
       displayMode,
     };
+
+    // While the user's finger owns the route scroller, WebKit keeps
+    // publishing live geometry: the standalone layout viewport pans with the
+    // gesture (pageTop) and the visual viewport oscillates around the open
+    // keyboard. Committing those values re-anchors the fixed viewport and
+    // re-transforms the avoiding dock mid-gesture, visibly fighting the
+    // native scroll. Hold the last committed values until the gesture
+    // releases (the hold tail above covers momentum); the meaningful-reduction
+    // check keeps real keyboard state changes (open/close) from being held.
+    if (this.userOwnsKeyboardScroll
+      && this.snapshot.keyboard.phase === 'open'
+      && meaningfulVisualReduction) {
+      candidate.pageTop = this.snapshot.pageTop;
+      candidate.keyboard = { ...this.snapshot.keyboard };
+    }
 
     if (this.lastCandidate
       && closeEnough(this.lastCandidate.width, candidate.width)
