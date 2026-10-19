@@ -179,6 +179,33 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('counters iOS browser keyboard pan without reclaiming the route scroll position', async () => {
+    const viewport = installViewport();
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15');
+    const controller = new ViewportController({ settleDelaysMs: [1, 2], keyboardStabilizationMs: 5 });
+    const shell = document.createElement('div'); shell.dataset.hfShell = '';
+    const scroller = document.createElement('div'); scroller.dataset.hfScrollView = '';
+    const dock = document.createElement('div'); dock.dataset.hfDock = '';
+    const input = document.createElement('textarea'); input.style.fontSize = '16px';
+    dock.append(input); shell.append(scroller, dock); document.body.append(shell);
+    controller.start(); input.focus(); viewport.height = 500;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    scroller.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    scroller.scrollTop = 320;
+    viewport.pageTop = 80;
+    viewport.dispatchEvent(new Event('scroll'));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('80px');
+    expect(scroller.scrollTop).toBe(320);
+    expect(document.documentElement.dataset.hfIosStandalone).toBe('false');
+    input.blur(); viewport.height = 844; viewport.pageTop = 0;
+    viewport.dispatchEvent(new Event('resize'));
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('0px');
+    controller.stop();
+  });
+
   it('counteracts standalone iOS page pan without including native UI outside the WebView', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });

@@ -574,7 +574,10 @@ export class ViewportController {
   }
 
   private readPageTop(layoutHeight?: number): number {
-    if (!this.isIosStandalone()) return 0;
+    const ios = this.isIosStandalone()
+      || /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!ios || (window.visualViewport?.scale ?? 1) > 1.01) return 0;
     const maximum = Math.max(1, layoutHeight ?? this.snapshot.stableHeight ?? window.innerHeight);
     return bounded(window.visualViewport?.pageTop ?? 0, 0, maximum);
   }
@@ -905,7 +908,7 @@ export class ViewportController {
     style.setProperty('--hf-viewport-y', px(snapshot.y));
     style.setProperty(
       '--hf-layout-viewport-top',
-      px(this.isIosStandalone() && snapshot.keyboard.phase !== 'closed' ? snapshot.pageTop : 0),
+      px(snapshot.keyboard.phase !== 'closed' ? snapshot.pageTop : 0),
     );
     const visualRight = snapshot.x + snapshot.width;
     const visualBottom = snapshot.y + snapshot.height;

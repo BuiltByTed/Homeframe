@@ -99,7 +99,8 @@
     overflow: hidden;
     background: var(--hf-app-background);
     /*
-     * Installed iOS can pan the layout viewport without changing offsetTop.
+     * iOS browser tabs and installed apps can pan the layout viewport while
+     * the keyboard is open, including during a user-owned scroll gesture.
      * Runtime counters that hidden pageTop pan here; shell dimensions remain
      * immutable while only the final grid row follows keyboard geometry.
      */
