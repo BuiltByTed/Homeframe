@@ -770,8 +770,14 @@ export class ViewportController {
 
     const virtualKeyboardHeight = Math.min(this.readVirtualKeyboardHeight(), stableHeight);
     const closedVisualBottom = Math.max(1, stableHeight - this.installedFrameInset);
-    const visualKeyboardHeight = Math.max(0, stableHeight - (height + y));
-    const visualKeyboardReduction = Math.max(0, closedVisualBottom - (height + y));
+    // The shell counters iOS pageTop panning at its origin. The matching part
+    // of offsetTop therefore cannot also count as extra visible height below
+    // the shell: doing so makes a stationary keyboard appear to shrink during
+    // a user-owned scroll and sends the dock underneath it. Non-iOS viewports
+    // retain their normal offset because readPageTop() returns zero there.
+    const keyboardVisualBottom = height + Math.max(0, y - pageTop);
+    const visualKeyboardHeight = Math.max(0, stableHeight - keyboardVisualBottom);
+    const visualKeyboardReduction = Math.max(0, closedVisualBottom - keyboardVisualBottom);
     const threshold = Math.min(
       this.options.keyboardThresholdPx,
       stableHeight * this.options.keyboardThresholdRatio,
@@ -813,7 +819,7 @@ export class ViewportController {
       keyboardPhase = previousOpen || this.snapshot.keyboard.phase === 'closing'
         ? 'closing'
         : 'closed';
-      if (keyboardPhase === 'closing' && closeEnough(height + y, closedVisualBottom)) {
+      if (keyboardPhase === 'closing' && closeEnough(keyboardVisualBottom, closedVisualBottom)) {
         keyboardPhase = 'closed';
       }
     }

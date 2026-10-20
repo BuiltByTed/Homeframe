@@ -206,6 +206,42 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('keeps keyboard avoidance constant while iOS pans offsetTop during a user drag', async () => {
+    const viewport = installViewport();
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15');
+    const controller = new ViewportController({ settleDelaysMs: [1, 2], keyboardStabilizationMs: 5 });
+    const shell = document.createElement('div'); shell.dataset.hfShell = '';
+    const scroller = document.createElement('div'); scroller.dataset.hfScrollView = '';
+    const dock = document.createElement('div'); dock.dataset.hfDock = '';
+    const input = document.createElement('textarea'); input.style.fontSize = '16px';
+    dock.append(input); shell.append(scroller, dock); document.body.append(shell);
+    controller.start();
+    try {
+      input.focus(); viewport.height = 500;
+      viewport.dispatchEvent(new Event('resize'));
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      scroller.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+      // The keyboard did not move: only the visual viewport's origin changed.
+      // Include enough pan to defeat the old keyboard-open threshold entirely.
+      for (const top of [80, 184, 344, 120, 0]) {
+        scroller.scrollTop += 27;
+        const position = scroller.scrollTop;
+        viewport.offsetTop = top; viewport.pageTop = top;
+        viewport.dispatchEvent(new Event('scroll'));
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        expect(controller.getSnapshot().keyboard.height).toBe(344);
+        expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('344px');
+        expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe(`${top}px`);
+        expect(scroller.scrollTop).toBe(position);
+      }
+      input.blur(); viewport.height = 844;
+      viewport.dispatchEvent(new Event('resize'));
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      expect(controller.getSnapshot().keyboard).toMatchObject({ phase: 'closed', height: 0 });
+      expect(document.documentElement.style.getPropertyValue('--hf-dock-keyboard-offset')).toBe('0px');
+    } finally { controller.stop(); }
+  });
+
   it('counteracts standalone iOS page pan without including native UI outside the WebView', async () => {
     const viewport = installViewport();
     Object.defineProperty(navigator, 'standalone', { value: true, configurable: true });
