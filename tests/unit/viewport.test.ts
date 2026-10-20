@@ -206,6 +206,37 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
+  it('routes a drag on dock chrome to the thread without panning the page or swallowing taps', async () => {
+    const viewport = installViewport();
+    const controller = new ViewportController({ settleDelaysMs: [1, 2], keyboardStabilizationMs: 5 });
+    const shell = document.createElement('div'); shell.dataset.hfShell = '';
+    const scroller = document.createElement('div'); scroller.dataset.hfScrollView = '';
+    const dock = document.createElement('div'); dock.dataset.hfDock = '';
+    const input = document.createElement('textarea'); input.style.fontSize = '16px';
+    const button = document.createElement('button'); const icon = document.createElement('span'); button.append(icon);
+    dock.append(input, button); shell.append(scroller, dock); document.body.append(shell);
+    const touch = (type: string, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: type === 'touchend' ? [] : [{ identifier: 1, clientX: 100, clientY: y }] });
+      icon.dispatchEvent(event); return event;
+    };
+    controller.start();
+    try {
+      input.focus(); viewport.height = 500; viewport.dispatchEvent(new Event('resize'));
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      scroller.scrollTop = 200;
+      expect(touch('touchstart', 300).defaultPrevented).toBe(false);
+      expect(touch('touchmove', 200).defaultPrevented).toBe(true);
+      expect(scroller.scrollTop).toBe(300);
+      touch('touchend', 200);
+      expect(document.activeElement).toBe(input);
+      // A stationary control tap keeps its native click behavior.
+      expect(touch('touchstart', 300).defaultPrevented).toBe(false);
+      expect(touch('touchend', 300).defaultPrevented).toBe(false);
+      expect(scroller.scrollTop).toBe(300);
+    } finally { controller.stop(); }
+  });
+
   it('keeps keyboard avoidance constant while iOS pans offsetTop during a user drag', async () => {
     const viewport = installViewport();
     vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15');

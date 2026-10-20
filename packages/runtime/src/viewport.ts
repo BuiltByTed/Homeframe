@@ -67,7 +67,7 @@ interface EditableScrollDrag {
   startY: number;
   startScrollTop: number;
   scroller: HTMLElement | null;
-  editable: HTMLElement;
+  editable: HTMLElement | null;
   dragging: boolean;
 }
 
@@ -283,6 +283,24 @@ export class ViewportController {
     // route fields and dock fields alike and preserves the tap-versus-scroll
     // distinction while suppressing WebKit's automatic focus pan.
     document.addEventListener('touchstart', (event) => {
+      // A vertical swipe can begin on dock chrome (including a floating
+      // scroll-to-bottom button). There is no native scroll owner there, so
+      // iOS otherwise pans the document beneath its keyboard. Preserve taps,
+      // but transfer a real vertical drag to the route's existing scroller.
+      if (this.snapshot.keyboard.phase !== 'closed'
+        && event.touches.length === 1 && event.target instanceof HTMLElement
+        && event.target.closest(DOCK_KEYBOARD_TARGET_SELECTOR)
+        && !event.target.closest(`${editableSelector}, input, select, [role="slider"]`)) {
+        const touch = event.touches[0];
+        const scroller = this.primaryScroller(event.target);
+        if (touch && scroller) {
+          this.editableScrollDrag = {
+            identifier: touch.identifier, startX: touch.clientX, startY: touch.clientY,
+            startScrollTop: scroller.scrollTop, scroller, editable: null, dragging: false,
+          };
+          return;
+        }
+      }
       if (!needsKeyboardFocusGuard(event.target)
         || document.activeElement === event.target
         || event.touches.length !== 1) return;
@@ -332,7 +350,7 @@ export class ViewportController {
       const drag = this.editableScrollDrag;
       this.editableScrollDrag = null;
       if (!drag || drag.dragging || event.type === 'touchcancel'
-        || !drag.editable.isConnected) return;
+        || !drag.editable?.isConnected) return;
       this.captureKeyboardAnchor(drag.editable);
       this.beginKeyboardSettlement();
       this.focusEditable(drag.editable);
