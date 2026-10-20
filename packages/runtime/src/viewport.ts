@@ -579,7 +579,13 @@ export class ViewportController {
       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (!ios || (window.visualViewport?.scale ?? 1) > 1.01) return 0;
     const maximum = Math.max(1, layoutHeight ?? this.snapshot.stableHeight ?? window.innerHeight);
-    return bounded(window.visualViewport?.pageTop ?? 0, 0, maximum);
+    const visual = window.visualViewport;
+    // Once WebKit reports offsetTop, fixed-position surfaces move by that
+    // amount. pageTop can additionally include browser-chrome/document scroll;
+    // compensating both lifts the shell a second time. Some iOS focus pans only
+    // publish pageTop, so retain that fallback when offsetTop stays at zero.
+    const pan = (visual?.offsetTop ?? 0) > 0 ? visual!.offsetTop : visual?.pageTop ?? 0;
+    return bounded(pan, 0, maximum);
   }
 
   private primaryScroller(element: HTMLElement): HTMLElement | null {

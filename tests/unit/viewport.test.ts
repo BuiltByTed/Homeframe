@@ -234,6 +234,12 @@ describe('ViewportController', () => {
         expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe(`${top}px`);
         expect(scroller.scrollTop).toBe(position);
       }
+      viewport.offsetTop = 330; viewport.pageTop = 368;
+      viewport.dispatchEvent(new Event('scroll'));
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      expect(document.documentElement.style.getPropertyValue('--hf-layout-viewport-top')).toBe('330px');
+      expect(controller.getSnapshot().keyboard.height).toBe(344);
+      viewport.offsetTop = 0; viewport.pageTop = 0;
       input.blur(); viewport.height = 844;
       viewport.dispatchEvent(new Event('resize'));
       await new Promise((resolve) => setTimeout(resolve, 15));
