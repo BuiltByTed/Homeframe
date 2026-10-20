@@ -206,14 +206,14 @@ describe('ViewportController', () => {
     controller.stop();
   });
 
-  it('routes a drag on dock chrome to the thread without panning the page or swallowing taps', async () => {
+  it.each(['span', 'svg'])('routes a drag on dock chrome (%s) to the thread without panning the page or swallowing taps', async (tag) => {
     const viewport = installViewport();
     const controller = new ViewportController({ settleDelaysMs: [1, 2], keyboardStabilizationMs: 5 });
     const shell = document.createElement('div'); shell.dataset.hfShell = '';
     const scroller = document.createElement('div'); scroller.dataset.hfScrollView = '';
     const dock = document.createElement('div'); dock.dataset.hfDock = '';
     const input = document.createElement('textarea'); input.style.fontSize = '16px';
-    const button = document.createElement('button'); const icon = document.createElement('span'); button.append(icon);
+    const button = document.createElement('button'); const icon = tag === 'svg' ? document.createElementNS('http://www.w3.org/2000/svg', 'svg') : document.createElement('span'); button.append(icon);
     dock.append(input, button); shell.append(scroller, dock); document.body.append(shell);
     const touch = (type: string, y: number) => {
       const event = new Event(type, { bubbles: true, cancelable: true });

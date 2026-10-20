@@ -287,12 +287,13 @@ export class ViewportController {
       // scroll-to-bottom button). There is no native scroll owner there, so
       // iOS otherwise pans the document beneath its keyboard. Preserve taps,
       // but transfer a real vertical drag to the route's existing scroller.
+      const target = event.target instanceof Element ? event.target : null;
+      const dock = target?.closest<HTMLElement>(DOCK_KEYBOARD_TARGET_SELECTOR);
       if (this.snapshot.keyboard.phase !== 'closed'
-        && event.touches.length === 1 && event.target instanceof HTMLElement
-        && event.target.closest(DOCK_KEYBOARD_TARGET_SELECTOR)
-        && !event.target.closest(`${editableSelector}, input, select, [role="slider"]`)) {
+        && event.touches.length === 1 && target && dock
+        && !target.closest(`${editableSelector}, input, select, [role="slider"]`)) {
         const touch = event.touches[0];
-        const scroller = this.primaryScroller(event.target);
+        const scroller = this.primaryScroller(dock);
         if (touch && scroller) {
           this.editableScrollDrag = {
             identifier: touch.identifier, startX: touch.clientX, startY: touch.clientY,
